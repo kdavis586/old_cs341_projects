@@ -17,9 +17,11 @@ void handle_punct(size_t idx, char ** output, const char * input_str, const char
 size_t get_bad_char_count(const char * src);
 int skip_char(char src);
 
-char **camel_caser(const char *input_str) {
+char **camel_caser(const char * input_str) {
     //If input is null return null
-    if (!input_str) return NULL;
+    if (!input_str) {
+        return NULL;
+    }
 
     char ** output = NULL;
     const char * itr = input_str;
@@ -44,16 +46,27 @@ char **camel_caser(const char *input_str) {
 }
 
 void destroy(char **result) {
+    if (!result) {
+        return;
+    }
+    
     char ** inc = result;
 
     while (*inc) {
         char * temp = *inc;
-        free(temp);
+
+        if (temp) {
+            free(temp);
+            temp = NULL;
+        }
+        
         inc++;
     }
 
-    free(result);
-    return;
+    if (result) {
+        free(result);
+        result = NULL;
+    }
 }
 
 void handle_punct(size_t idx, char ** output, const char * input_str, const char * word_start) {
