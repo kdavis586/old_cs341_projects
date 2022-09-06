@@ -15,6 +15,7 @@ size_t get_sentence_count(const char * src);
 void copy_chars(char * dest, const char * src, size_t length);
 void handle_punct(size_t idx, char ** output, const char * input_str, const char * word_start);
 size_t get_bad_char_count(const char * src);
+int skip_char(char src);
 
 char **camel_caser(const char *input_str) {
     //If input is null return null
@@ -114,13 +115,22 @@ char * camel_case_sentence(const char * sentence) {
     camel_cased[strlen(sentence)] = '\0';
 
     size_t idx = 0;
+    int first_letter = 1;
     while(*sentence) {
-        int punct = ispunct(*sentence);
-        int space = isspace(*sentence);
+        int skip = skip_char(*sentence);
 
-        if (!punct && !space) {
-            camel_cased[idx] = tolower(*sentence);
+        if (!skip) {
+
+            if (first_letter) {
+                camel_cased[idx] = toupper(*sentence);
+                first_letter = 0;
+            } else {
+                camel_cased[idx] = tolower(*sentence);
+            }
+
             idx++;
+        } else if (!first_letter) {
+            first_letter = 1;
         }
 
         sentence++;
@@ -134,10 +144,7 @@ size_t get_bad_char_count(const char * src) {
     size_t count = 0;
     
     while(*src) {
-        int punct = ispunct(*src);
-        int space = isspace(*src);
-
-        if(punct || space) {
+        if(skip_char(*src)) {
             count++;
         }
 
@@ -145,4 +152,8 @@ size_t get_bad_char_count(const char * src) {
     }
 
     return count;
+}
+
+int skip_char(char src) {
+    return (ispunct(src) || isspace(src));
 }
