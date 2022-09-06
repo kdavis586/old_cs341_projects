@@ -14,6 +14,7 @@ char * camel_case_sentence(const char * sentence);
 size_t get_sentence_count(const char * src);
 void copy_chars(char * dest, const char * src, size_t length);
 void handle_punct(size_t idx, char ** output, const char * input_str, const char * word_start);
+size_t get_bad_char_count(const char * src);
 
 char **camel_caser(const char *input_str) {
     //If input is null return null
@@ -42,7 +43,6 @@ char **camel_caser(const char *input_str) {
 }
 
 void destroy(char **result) {
-    // TODO: Implement me!
     char ** inc = result;
 
     while (*inc) {
@@ -107,9 +107,42 @@ char * camel_case_sentence(const char * sentence) {
         return "";
     }
 
-    char * camel_cased = (char *) malloc(strlen(sentence) + 1);
+    const char * itr = sentence;
+    size_t bad_chars = get_bad_char_count(itr);
+
+    char * camel_cased = (char *) malloc(strlen(sentence) - bad_chars + 1);
     camel_cased[strlen(sentence)] = '\0';
-    strcpy(camel_cased, sentence);
+
+    size_t idx = 0;
+    while(*sentence) {
+        int punct = ispunct(*sentence);
+        int space = isspace(*sentence);
+
+        if (!punct && !space) {
+            camel_cased[idx] = tolower(*sentence);
+            idx++;
+        }
+
+        sentence++;
+    }
+    //strcpy(camel_cased, sentence);
 
     return camel_cased;
+}
+
+size_t get_bad_char_count(const char * src) {
+    size_t count = 0;
+    
+    while(*src) {
+        int punct = ispunct(*src);
+        int space = isspace(*src);
+
+        if(punct || space) {
+            count++;
+        }
+
+        src++;
+    }
+
+    return count;
 }
