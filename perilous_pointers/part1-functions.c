@@ -140,6 +140,10 @@ void eight(int a) {
         printf("%d ", values[i][i]);
     printf("\n");
 
+    size_t idx = 0;
+    for( ;idx < 10; idx++) {
+        free(values[idx]);
+    }
     free(values);
     values = NULL;
 }

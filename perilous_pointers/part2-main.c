@@ -13,45 +13,65 @@
  */
 int main() {
     // function 1
-    printf("%s\n", first_step(81));
+    first_step(81);
 
     // function 2
-    int value = 132
-    printf("%s\n", second_step(&value));
+    int value2 = 132;
+    second_step(&value2);
 
     // function 3
-    int ** value = {8942};
-    printf("%s\n", double_step(value));
+    int * value3 = (int *) malloc(sizeof(int));
+    *value3 = 8942;
+    double_step(&value3);
+    free(value3);
 
     // function 4
-    char * value = "abcde\15";
-    printf("%s\n", strange_step(value));
+    char * value4 = malloc(sizeof(int) * 6);
+    *(int *)(value4 + 5) = 15;
+    strange_step(value4);
+    free(value4);
 
     // function 5
-    char * value = "abc";
-    printf("%s\n", empty_step(value));
+    char * value5 = "abc";
+    empty_step(value5);
 
     // function 6
-    char * value = "abcu";
-    printf("%s\n", two_step(value, value));
+    char * value6 = "abcu";
+    two_step(value6, value6);
 
     // function 7
-    char * val1 = "abcdef";
-    char * val2 = val1 + 2;
-    char * val3 = val2 + 2;
-    printf("%s\n", three_step(val1, val2, val3));
+    char * val7 = "abcdef";
+    char * val8 = val7 + 2;
+    char * val9 = val8 + 2;
+    three_step(val7, val8, val9);
 
     // function 8
-    printf("%s\n", first_step(81));
+    char * val10 = "aa";
+    char * val11 = malloc(3);
+    val11[2] = val10[1] + 8;
+    char * val12 = malloc(4);
+    val12[3] = val11[2] + 8;
+    step_step_step(val10, val11, val12);
+    free(val11);
+    free(val12);
 
     // function 9
-    printf("%s\n", first_step(81));
+    char * val13 = "\x01";
+    int b = 1;
+    it_may_be_odd(val13, b);
 
     // function 10
-    printf("%s\n", first_step(81));
+    char * to_copy = "test,CS241";
+    char * val14 = malloc(strlen(to_copy) + 1);
+    strcpy(val14, to_copy);
+    tok_step(val14);
+    free(val14);
 
     // function 11
-    printf("%s\n", first_step(81));
+    char * val15 = malloc(sizeof(int));
+    val15[0] = 1;
+    the_end(val15, val15);
+    free(val15);
 
     return 0;
 }
