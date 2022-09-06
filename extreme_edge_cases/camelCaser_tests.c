@@ -43,6 +43,36 @@ int test_camelCaser(char **(*camelCaser)(const char *),
     char * input8 = "big                            spaces                          are                    present.";
     char * expected8[] = {"bigSpacesArePresent", NULL};
 
+    char * input9 = "\1\2\3. \4\5\6?";
+    char * expected9[] = {"\1\2\3", "\4\5\6", NULL};
+
+    char * input10 = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed ante sapien, egestas quis urna nec, venenatis fermentum lacus. In ut ex ligula. Aliquam vehicula, diam vel ultrices rutrum, massa est dictum enim, ac pellentesque quam purus a justo. Phasellus non nibh orci.";// Fusce scelerisque id leo eget accumsan. Fusce volutpat nibh dui, ut dignissim magna rutrum in. Pellentesque eu convallis tellus, ac aliquam velit. Suspendisse volutpat aliquam elit ut convallis. Aliquam sit amet dictum dui. Suspendisse sodales enim nec justo fringilla laoreet eget id nibh. Pellentesque tristique odio eu ante vestibulum, eu dignissim quam gravida. Suspendisse pharetra odio tellus, non sodales diam aliquet molestie""";
+
+    char * expected10[] = {
+            "loremIpsumDolorSitAmet",
+            "consecteturAdipiscingElit",
+            "sedAnteSapien",
+            "egestasQuisUrnaNec",
+            "venenatisFermentumLacus",
+            "inUtExLigula",
+            "aliquamVehicula",
+            "diamVelUltricesRutrum",
+            "massaEstDictumEnim",
+            "acPellentesqueQuamPurusAJusto",
+            "phasellusNonNibhOrci",
+            NULL};
+            // "fusceScelerisqueIdLeoEgetAccumsan",
+            // "fusceVolutpatNibhDui",
+            // "utDignissimMagnaRutrumIn",
+            // "pellentesqueEuConvallisTellus",
+            // "acAliquamVelit",
+            // "suspendisseVolutpatAliquamElitUtConvallis",
+            // "aliquamSitAmetDictumDui",
+            // "suspendisseSodalesEnimNecJustoFringillaLaoreetEgetIdNibh",
+            // "pellentesqueTristiqueOdioEuAnteVestibulum",
+            // "euDignissimQuamGravida",
+            // "suspendissePharetraOdioTellus",
+            // NULL};
 
     char ** actual1 = camelCaser(input1);
     char ** actual2 = camelCaser(input2);
@@ -52,6 +82,8 @@ int test_camelCaser(char **(*camelCaser)(const char *),
     char ** actual6 = camelCaser(input6);
     char ** actual7 = camelCaser(input7);
     char ** actual8 = camelCaser(input8);
+    char ** actual9 = camelCaser(input9);
+    char ** actual10 = camelCaser(input10);
 
     assert(compare_output(actual1, expected1));
     assert(compare_output(actual2, expected2));
@@ -61,6 +93,8 @@ int test_camelCaser(char **(*camelCaser)(const char *),
     assert(compare_output(actual6, expected6));
     assert(compare_output(actual7, expected7));
     assert(compare_output(actual8, expected8));
+    assert(compare_output(actual9, expected9));
+    assert(compare_output(actual10, expected10));
 
     destroy(actual1);
     destroy(actual2);
@@ -70,6 +104,8 @@ int test_camelCaser(char **(*camelCaser)(const char *),
     destroy(actual6);
     destroy(actual7);
     destroy(actual8);
+    destroy(actual9);
+    destroy(actual10);
 
     return 1;
 }
@@ -83,6 +119,8 @@ int compare_output(char ** actual, char ** expected)  {
         int compare = strcmp(*actual, *expected);
 
         if (compare != 0) {
+            printf("%s\n", *actual);
+            printf("%s\n", *expected);
             return 0;
         }
 
