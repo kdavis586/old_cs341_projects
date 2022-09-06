@@ -49,7 +49,7 @@ void destroy(char **result) {
     if (!result) {
         return;
     }
-    
+
     char ** inc = result;
 
     while (*inc) {
@@ -88,7 +88,9 @@ void handle_punct(size_t idx, char ** output, const char * input_str, const char
 
         free(sentence);
     } else {
-        camel_cased = "";
+        char * empty = (char *) malloc(1);
+        empty[0] = '\0';
+        camel_cased = empty;
     }
 
     output[idx] = camel_cased;
@@ -118,7 +120,9 @@ void copy_chars(char * dest, const char * src, size_t length) {
 
 char * camel_case_sentence(const char * sentence) {
     if (!sentence) {
-        return "";
+        char * empty = (char *) malloc(1);
+        empty[0] = '\0';
+        return empty;
     }
 
     const char * itr = sentence;
