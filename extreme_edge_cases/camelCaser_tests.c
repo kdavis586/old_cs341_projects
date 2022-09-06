@@ -15,15 +15,34 @@ void print_camelcase(char ** to_print);
 
 int test_camelCaser(char **(*camelCaser)(const char *),
                     void (*destroy)(char **)) {
-    // TODO: Implement me!
     char * input1 = "Hello.World4 test.not here";
     char * expected1[] = {"hello", "world4Test", NULL};
 
+    char * input2 = NULL;
+    char * expected2[] = {NULL};
+
+    char * input3 = "";
+    char * expected3[] = {NULL};
+
+    char * input4 = "SOME STUFF HERE. AHHH AHHH..";
+    char * expected4[] = {"someStuffHere", "ahhhAhhh", "", NULL};
+
+
+
     char ** actual1 = camelCaser(input1);
-    print_camelcase(actual1);
-    print_camelcase(expected1);
+    char ** actual2 = camelCaser(input2);
+    char ** actual3 = camelCaser(input3);
+    char ** actual4 = camelCaser(input4);
+
     assert(compare_output(actual1, expected1));
+    assert(compare_output(actual2, expected2));
+    assert(compare_output(actual3, expected3));
+    assert(compare_output(actual4, expected4));
+
     destroy(actual1);
+    destroy(actual2);
+    destroy(actual3);
+    destroy(actual4);
 
     return 1;
 }
@@ -32,7 +51,7 @@ int compare_output(char ** actual, char ** expected)  {
     while (*actual && *expected) {
         int compare = strcmp(*actual, *expected);
 
-        if (!compare) {
+        if (compare != 0) {
             return 0;
         }
 

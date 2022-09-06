@@ -116,12 +116,16 @@ char * camel_case_sentence(const char * sentence) {
 
     size_t idx = 0;
     int first_letter = 1;
+    int first_word = 1;
     while(*sentence) {
         int skip = skip_char(*sentence);
 
         if (!skip) {
-
-            if (first_letter) {
+            if (first_letter && first_word) {
+                camel_cased[idx] = tolower(*sentence);
+                first_letter = 0;
+                first_word = 0;
+            } else if (first_letter) {
                 camel_cased[idx] = toupper(*sentence);
                 first_letter = 0;
             } else {
