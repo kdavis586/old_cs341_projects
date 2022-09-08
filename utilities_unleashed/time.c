@@ -12,52 +12,59 @@
 #include <sys/wait.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
+
+#define NANO_IN_SEC (double)(1000000000)
+extern char** environ;
 
 int main(int argc, char *argv[]) {
-    struct timespec * start_time = malloc(sizeof(struct timespec));
-    int sst = clock_gettime(CLOCK_MONOTONIC, start_time);
-
+    if (argc == 1) {
+        print_time_usage();
+        exit(3);
+    }
+    
+    struct timespec start, end;
+    int sst = clock_gettime(CLOCK_MONOTONIC, &start);
     if (sst == -1) {
-        return 1;
+        // Handling if getting clock time failed
+        exit(2);
     }
 
-    double start_nano = start_time->tv_nsec;
-    free(start_time);
-
-    pid_t pid = fork();
-
-    if (pid == -1) {
+    pid_t child = fork();
+    // Handle if forking failed
+    if (child == -1) {
         print_fork_failed();
     }
 
-    char ** terminated_argv = (char**) malloc(argc + 1); // This might cause errors
-    memcpy(terminated_argv, argv, argc);
-    terminated_argv[sizeof(terminated_argv) - 1] = NULL;
-
-    if (pid == 0) {
+    if (child == 0) {
         // Child process
-        // execute something here
-        // add null pointer to end of array
-        execv(terminated_argv[0], terminated_argv);
-        print_exec_failed();
-        return 1;
+        execvpe(argv[1], &argv[1], environ);
+        exit(1);
+    } else {
+        int status;
+        pid_t pid = waitpid(child, &status, 0);
+
+        // Handle if child process did not return properly
+        if (pid == -1) {
+            print_exec_failed();
+        }
+
+        // Handle if child failed.
+        if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
+            print_exec_failed();
+            exit(1);
+        }
+
+        int se = clock_gettime(CLOCK_MONOTONIC, &end);
+        if (se == -1) {
+            // Handling if getting clock time failed
+            exit(2);
+        }
+
+        double duration_s = (double)(end.tv_sec - start.tv_sec) + ((end.tv_nsec / NANO_IN_SEC) - (start.tv_nsec / NANO_IN_SEC));
+        display_results(argv, duration_s);
+        printf("Parent is done\n");
     }
-    
-    int status = 0;
-    wait(&status);
-    free(argv); // might not need this...
 
-    struct timespec * end_time = malloc(sizeof(struct timespec));
-    int se = clock_gettime(CLOCK_MONOTONIC, end_time);
-
-    if (se == -1) {
-        return 1;
-    }
-
-    double end_nano = end_time->tv_nsec;
-    free(end_time);
-
-    double duration_s = (end_nano - start_nano) / 1000000000;
-    display_results(argv, duration_s);
-    return 0;
+    exit(0);
 }
