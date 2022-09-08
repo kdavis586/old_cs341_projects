@@ -18,16 +18,16 @@
 extern char** environ;
 
 int main(int argc, char *argv[]) {
-    if (argc == 1) {
+    if (argc <= 1) {
         print_time_usage();
-        exit(3);
+        exit(1);
     }
-    
+
     struct timespec start, end;
     int sst = clock_gettime(CLOCK_MONOTONIC, &start);
     if (sst == -1) {
         // Handling if getting clock time failed
-        exit(2);
+        exit(1);
     }
 
     pid_t child = fork();
@@ -37,8 +37,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (child == 0) {
-        // Child process
-        execvpe(argv[1], &argv[1], environ);
+        execvp(argv[1], &argv[1]);
         exit(1);
     } else {
         int status;
@@ -58,7 +57,7 @@ int main(int argc, char *argv[]) {
         int se = clock_gettime(CLOCK_MONOTONIC, &end);
         if (se == -1) {
             // Handling if getting clock time failed
-            exit(2);
+            exit(1);
         }
 
         double duration_s = (double)(end.tv_sec - start.tv_sec) + ((end.tv_nsec / NANO_IN_SEC) - (start.tv_nsec / NANO_IN_SEC));
