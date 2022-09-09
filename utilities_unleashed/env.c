@@ -27,18 +27,16 @@ int main(int argc, char *argv[]) {
     if (child == 0) {
         size_t i = 1;
         while (argv[i] && strcmp(argv[i], "--") != 0) {
+            if (!strchr(argv[i], '=')) {
+                print_env_usage();
+                exit(1);
+            }
             // Processing key value pairs
             char * input_copy = malloc(sizeof(argv[i]) + 1);
             strcpy(input_copy, argv[i]);
             const char * delim = "=";
             char * key = strtok(input_copy, delim);
             char * value = input_copy;
-            
-            
-            if (!key || !value) {
-                // Value does not parsed fail
-                exit(1);
-            }
 
             if (setenv(key, value, 1) == -1) {
                 free(input_copy);
