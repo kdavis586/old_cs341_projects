@@ -112,7 +112,7 @@ void **vector_end(vector *this) {
 size_t vector_size(vector *this) {
     assert(this);
     // your code here
-    return 0;
+    return this->size;
 }
 
 void vector_resize(vector *this, size_t n) {
@@ -123,13 +123,13 @@ void vector_resize(vector *this, size_t n) {
 size_t vector_capacity(vector *this) {
     assert(this);
     // your code here
-    return 0;
+    return this->capacity;
 }
 
 bool vector_empty(vector *this) {
     assert(this);
     // your code here
-    return true;
+    return this->size;
 }
 
 void vector_reserve(vector *this, size_t n) {
@@ -140,29 +140,35 @@ void vector_reserve(vector *this, size_t n) {
 void **vector_at(vector *this, size_t position) {
     assert(this);
     // your code here
-    return NULL;
+    assert(position < this->size);
+    return this->array[position];
 }
 
 void vector_set(vector *this, size_t position, void *element) {
     assert(this);
     // your code here
+    assert(position < this->size);
+    //TODO: Should I free here, or is it the job of the user to figure this out...
+    this->array[position] = element;
 }
 
 void *vector_get(vector *this, size_t position) {
     assert(this);
     // your code here
-    return NULL;
+    assert(position < this->size);
+    return this->array[position];
 }
 
 void **vector_front(vector *this) {
     assert(this);
     // your code here
-    return NULL;
+    return this->array[0];
 }
 
 void **vector_back(vector *this) {
+    assert(this);
     // your code here
-    return NULL;
+    return this->array[this->size - 1];
 }
 
 void vector_push_back(vector *this, void *element) {

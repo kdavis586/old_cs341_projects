@@ -32,17 +32,7 @@ int main(int argc, char *argv[]) {
                 print_env_usage();
                 exit(1);
             }
-            // Processing key value pairs
-            // char * input_copy = malloc(sizeof(argv[i]) + 1);
-            // strcpy(input_copy, argv[i]);
-            // const char * delim = "=";
-            // char * key = strtok(input_copy, delim);
-            // char * value = input_copy;
 
-            // if (argv[i][0] == '=') {
-            //     value = key;
-            //     key = NULL;
-            // }
             size_t key_len = equal_ptr - argv[i];
             char * key = malloc(key_len + 1);
             key[key_len] = '\0';
