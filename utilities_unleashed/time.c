@@ -49,7 +49,7 @@ int main(int argc, char *argv[]) {
         }
 
         // Handle if child failed.
-        if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
+        if (WIFSIGNALED(status) || (WIFEXITED(status) && WEXITSTATUS(status) != 0)) {
             exit(1);
         }
 
