@@ -56,6 +56,8 @@ int main(int argc, char *argv[]) {
                 char * env_value = getenv(&value[1]);
                 
                 if (!env_value) {
+                    free(key);
+                    free(value);
                     exit(1);
                 } else {
                     free(value);
