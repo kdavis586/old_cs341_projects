@@ -15,7 +15,6 @@
 #include <stdio.h>
 
 #define NANO_IN_SEC (double)(1000000000)
-extern char** environ;
 
 int main(int argc, char *argv[]) {
     if (argc <= 1) {
@@ -38,6 +37,7 @@ int main(int argc, char *argv[]) {
 
     if (child == 0) {
         execvp(argv[1], &argv[1]);
+        print_exec_failed();
         exit(1);
     } else {
         int status;
@@ -45,12 +45,11 @@ int main(int argc, char *argv[]) {
 
         // Handle if child process did not return properly
         if (pid == -1) {
-            print_exec_failed();
+            exit(1);
         }
 
         // Handle if child failed.
         if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
-            print_exec_failed();
             exit(1);
         }
 
@@ -62,7 +61,6 @@ int main(int argc, char *argv[]) {
 
         double duration_s = (double)(end.tv_sec - start.tv_sec) + ((end.tv_nsec / NANO_IN_SEC) - (start.tv_nsec / NANO_IN_SEC));
         display_results(argv, duration_s);
-        printf("Parent is done\n");
     }
 
     exit(0);
