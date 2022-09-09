@@ -54,9 +54,14 @@ int main(int argc, char *argv[]) {
 
             if (value[0] == '%') {
                 char * env_value = getenv(&value[1]);
-                free(value);
-                value = malloc(sizeof(env_value) + 1);
-                strcpy(value, env_value);
+                
+                if (!env_value) {
+                    exit(1);
+                } else {
+                    free(value);
+                    value = malloc(sizeof(env_value) + 1);
+                    strcpy(value, env_value);
+                }
             }
 
             if (setenv(key, value, 1) == -1) {
