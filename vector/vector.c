@@ -140,14 +140,14 @@ void vector_reserve(vector *this, size_t n) {
 void **vector_at(vector *this, size_t position) {
     assert(this);
     // your code here
-    assert(position < this->size);
+    assert(position < vector_size(this));
     return this->array[position];
 }
 
 void vector_set(vector *this, size_t position, void *element) {
     assert(this);
     // your code here
-    assert(position < this->size);
+    assert(position < vector_size(this));
     //TODO: Should I free here, or is it the job of the user to figure this out...
     this->array[position] = element;
 }
@@ -155,7 +155,7 @@ void vector_set(vector *this, size_t position, void *element) {
 void *vector_get(vector *this, size_t position) {
     assert(this);
     // your code here
-    assert(position < this->size);
+    assert(position < vector_size(this));
     return this->array[position];
 }
 
@@ -168,7 +168,7 @@ void **vector_front(vector *this) {
 void **vector_back(vector *this) {
     assert(this);
     // your code here
-    return this->array[this->size - 1];
+    return this->array[vector_size(this) - 1];
 }
 
 void vector_push_back(vector *this, void *element) {
@@ -190,10 +190,26 @@ void vector_erase(vector *this, size_t position) {
     assert(this);
     assert(position < vector_size(this));
     // your code here
+    free(this->array[position]);
+    this->array[position] = NULL;
+    if (position < (vector_size(this) - 1)) {
+        // Move all of the elements
+        size_t i = position;
+        for (; i < vector_size(this) - 1; i++) {
+            void * value = vector_get(this, i + 1);
+            vector_set(this, i, value);
+        }
+    }
+    this->size--;
 }
 
 void vector_clear(vector *this) {
     // your code here
+    assert(this);
+    size_t i;
+    for (i = vector_size(this) - 1; i >= 0; i--) {
+        vector_erase(this, i);
+    }
 }
 
 // The following is code generated:
