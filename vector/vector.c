@@ -91,9 +91,14 @@ vector *vector_create(copy_constructor_type copy_constructor,
     // your code here
     // Casting to void to remove complier error. Remove this line when you are
     // ready.
-    (void)INITIAL_CAPACITY;
-    (void)get_new_capacity;
-    return NULL;
+    vector * new_vector = malloc(sizeof(vector));
+    vector->copy_constructor = copy_constructor;
+    vector->destructor = destructor;
+    vector->default_constructor = default_constructor;
+    vector->array = (void **) malloc(INITIAL_CAPACITY * sizeof(void *));
+    vector->size = 0;
+    vector->capacity = INITIAL_CAPACITY;
+    return new_vector;
 }
 
 void vector_destroy(vector *this) {
@@ -102,10 +107,12 @@ void vector_destroy(vector *this) {
 }
 
 void **vector_begin(vector *this) {
+    assert(this);
     return this->array + 0;
 }
 
 void **vector_end(vector *this) {
+    assert(this);
     return this->array + this->size;
 }
 
