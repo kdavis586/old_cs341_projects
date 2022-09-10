@@ -90,12 +90,12 @@ vector *vector_create(copy_constructor_type copy_constructor,
                       default_constructor_type default_constructor) {
     // your code here
     vector * new_vector = malloc(sizeof(vector));
-    vector->copy_constructor = (copy_constructor) ? copy_constructor : shallow_copy_constructor;
-    vector->destructor = (destructor) ? destructor : shallow_destructor;
-    vector->default_constructor = (default_constructor) ? default_constructor : shallow_default_constructor;
-    vector->array = (void **) malloc(INITIAL_CAPACITY * sizeof(void *));
-    vector->size = 0;
-    vector->capacity = INITIAL_CAPACITY;
+    new_vector->copy_constructor = (copy_constructor) ? copy_constructor : shallow_copy_constructor;
+    new_vector->destructor = (destructor) ? destructor : shallow_destructor;
+    new_vector->default_constructor = (default_constructor) ? default_constructor : shallow_default_constructor;
+    new_vector->array = (void **) malloc(INITIAL_CAPACITY * sizeof(void *));
+    new_vector->size = 0;
+    new_vector->capacity = INITIAL_CAPACITY;
     return new_vector;
 }
 
@@ -141,7 +141,7 @@ void vector_resize(vector *this, size_t n) {
         if (n > vector_capacity(this)) {
             // Need to reallocate the array
             size_t new_capacity = get_new_capacity(n);
-            this->array = reallocarray(this->array, new_capacity * sizeof(void *));
+            this->array = reallocarray(this->array, new_capacity, sizeof(void *));
         }
 
         size_t i = vector_size(this);
@@ -168,7 +168,7 @@ void vector_reserve(vector *this, size_t n) {
     assert(this);
     // your code here
     size_t new_capacity = get_new_capacity(n);
-    this->array = reallocarray(this->array, new_capacity * sizeof(void *));
+    this->array = reallocarray(this->array, new_capacity, sizeof(void *));
 }
 
 void **vector_at(vector *this, size_t position) {
@@ -233,11 +233,11 @@ void vector_insert(vector *this, size_t position, void *element) {
         // At max capacity, logarithmically resize array
         vector_resize(this, vector_capacity(this) + 1);
     }
-    size_t i = position;
-    void * current = this->array[i];
+    
     this->size++;
 
     // Move all of the elements forward
+    size_t i = position;
     while (i < vector_size(this)) { 
         this->array[i + 1] = this->array[i];
         i++;
