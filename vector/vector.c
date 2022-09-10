@@ -114,7 +114,7 @@ void vector_destroy(vector *this) {
 
 void **vector_begin(vector *this) {
     assert(this);
-    return this->array + 0;
+    return this->array;
 }
 
 void **vector_end(vector *this) {
@@ -131,6 +131,25 @@ size_t vector_size(vector *this) {
 void vector_resize(vector *this, size_t n) {
     assert(this);
     // your code here
+    if (n < vector_size(this)) {
+        size_t i;
+        for (i = n; i < vector_size(this); i++) {
+            vector_erase(this, i);
+        }
+        this->size = n;
+    } else if (n > vector_size(this)) {
+        if (n > vector_capacity(this)) {
+            // Need to reallocate the array
+            size_t new_capacity = get_new_capacity(n);
+            this->array = reallocarray(this->array, new_capacity * sizeof(void *));
+        }
+
+        size_t i = vector_size(this);
+        while (i < n) {
+            this->array[i] = this->default_constructor();
+            this->size++;
+        }
+    }
 }
 
 size_t vector_capacity(vector *this) {
@@ -142,12 +161,14 @@ size_t vector_capacity(vector *this) {
 bool vector_empty(vector *this) {
     assert(this);
     // your code here
-    return this->size;
+    return (bool) this->size;
 }
 
 void vector_reserve(vector *this, size_t n) {
     assert(this);
     // your code here
+    size_t new_capacity = get_new_capacity(n);
+    this->array = reallocarray(this->array, new_capacity * sizeof(void *));
 }
 
 void **vector_at(vector *this, size_t position) {
@@ -161,8 +182,8 @@ void vector_set(vector *this, size_t position, void *element) {
     assert(this);
     // your code here
     assert(position < vector_size(this));
-    //TODO: Should I free here, or is it the job of the user to figure this out...
-    this->array[position] = element;
+    this->destructor(this->array[position]);
+    this->array[position] = this->copy_constructor(element);
 }
 
 void *vector_get(vector *this, size_t position) {
@@ -175,36 +196,62 @@ void *vector_get(vector *this, size_t position) {
 void **vector_front(vector *this) {
     assert(this);
     // your code here
-    return this->array[0];
+    return &(this->array[0]);
 }
 
 void **vector_back(vector *this) {
     assert(this);
     // your code here
-    return this->array[vector_size(this) - 1];
+    return &(this->array[vector_size(this) - 1]);
 }
 
 void vector_push_back(vector *this, void *element) {
     assert(this);
     // your code here
+    if (vector_size(this) == vector_capacity(this)) {
+        // At max capacity, logarithmically resize array
+        vector_resize(this, vector_capacity(this) + 1);
+    }
+
+    this->destructor(this->array[vector_size(this)]);
+    this->array[vector_size(this)] = this->copy_constructor(element);
+    this->size++;
 }
 
 void vector_pop_back(vector *this) {
     assert(this);
     // your code here
+    this->destructor(this->array[vector_size(this) - 1]);
+    this->size--;
 }
 
 void vector_insert(vector *this, size_t position, void *element) {
     assert(this);
     // your code here
+    assert(position < vector_size(this));
+    if (vector_size(this) == vector_capacity(this)) {
+        // At max capacity, logarithmically resize array
+        vector_resize(this, vector_capacity(this) + 1);
+    }
+    size_t i = position;
+    void * current = this->array[i];
+    this->size++;
+
+    // Move all of the elements forward
+    while (i < vector_size(this)) { 
+        this->array[i + 1] = this->array[i];
+        i++;
+    }
+
+    // Set the desired position
+    this->array[position] = this->copy_constructor(element);
 }
 
 void vector_erase(vector *this, size_t position) {
     assert(this);
     assert(position < vector_size(this));
     // your code here
-    free(this->array[position]);
-    this->array[position] = NULL;
+    this->destructor(this->array[position]);
     if (position < (vector_size(this) - 1)) {
         // Move all of the elements
         size_t i = position;
@@ -213,6 +260,9 @@ void vector_erase(vector *this, size_t position) {
             vector_set(this, i, value);
         }
     }
+
+    // this void * moved, set this current value to NULL
+    this->array[vector_size(this) - 1] = NULL;
     this->size--;
 }
 
