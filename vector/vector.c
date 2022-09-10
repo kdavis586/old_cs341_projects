@@ -89,12 +89,10 @@ vector *vector_create(copy_constructor_type copy_constructor,
                       destructor_type destructor,
                       default_constructor_type default_constructor) {
     // your code here
-    // Casting to void to remove complier error. Remove this line when you are
-    // ready.
     vector * new_vector = malloc(sizeof(vector));
-    vector->copy_constructor = copy_constructor;
-    vector->destructor = destructor;
-    vector->default_constructor = default_constructor;
+    vector->copy_constructor = (copy_constructor) ? copy_constructor : shallow_copy_constructor;
+    vector->destructor = (destructor) ? destructor : shallow_destructor;
+    vector->default_constructor = (default_constructor) ? default_constructor : shallow_default_constructor;
     vector->array = (void **) malloc(INITIAL_CAPACITY * sizeof(void *));
     vector->size = 0;
     vector->capacity = INITIAL_CAPACITY;
@@ -104,6 +102,14 @@ vector *vector_create(copy_constructor_type copy_constructor,
 void vector_destroy(vector *this) {
     assert(this);
     // your code here
+    size_t i;
+    for (i = 0; i < vector_size(this); i++) {
+        this->destructor(this->array[i]);
+    }
+    free(this->array);
+    this->array = NULL;
+    free(this);
+    this = NULL;
 }
 
 void **vector_begin(vector *this) {
