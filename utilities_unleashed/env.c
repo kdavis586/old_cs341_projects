@@ -51,12 +51,12 @@ int main(int argc, char *argv[]) {
                     exit(1);
                 } else {
                     free(value);
-                    value = malloc(sizeof(env_value) + 1);
+                    value = malloc(strlen(env_value) + 1);
                     strcpy(value, env_value);
                 }
             }
 
-            if (setenv(key, value, 1) == -1) {
+            if (setenv(key, value, 1) == -1) { // TODO: Failing here if value is a really long string
                 print_environment_change_failed();
                 free(key);
                 free(value);
