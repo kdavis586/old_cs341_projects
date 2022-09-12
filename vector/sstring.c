@@ -76,7 +76,26 @@ int sstring_substitute(sstring *this, size_t offset, char *target,
                        char *substitution) {
     // your code goes here
     assert(this);
-    return -1;
+    assert(target);
+    assert(substitution);
+
+    char * cstr = this->internal_string;
+    char * cur = &cstr[offset];
+    char * char_to_match = target;
+
+    bool matched = false;
+    while (*cur) {
+        if (*cur == target[0]) {
+            // potential replacement, see if so
+            if (_found_target(cur, target)) {
+                _replace(this, cur, target, substitution);
+                matched = true;
+            }
+        }
+        cur++;
+    }
+    
+    return (matched) ? 0 : -1;
 }
 
 char *sstring_slice(sstring *this, int start, int end) {
@@ -99,4 +118,40 @@ void sstring_destroy(sstring *this) {
     this->internal_string = NULL;
     free(this)
     this = NULL;
+}
+
+bool _found_target(char * cur, char * target) {
+    char * cur_itr = cur;
+    char * target_itr = target;
+
+    while (*cur_itr && *target_itr) {
+        if (*cur_itr != *target_itr) {
+            return false;
+        }
+
+        cur_itr++;
+        target_itr++;
+    }
+
+    return true;
+}
+
+void _replace(sstring * this, char * cur, char * target, char * substitution) {
+    size_t front_len = cur - this->internal_string;
+    char * front = calloc(front_len + 1, sizeof(char));
+    strncpy(front, this->internal_string, front_len);
+
+    size_t whole_len = strlen(this->internal_string);
+    size_t back_len = &this->internal_string[whole_len - 1] - (cur + strlen(target));
+    char * back = calloc(back_len + 1, sizeof(char));
+    strcpy(back, cur + strlen(target));
+
+    char * replace_str = calloc(strlen(front) + strlen(back) + strlen(substitution) + 1, sizeof(char));
+    strcat(replace_str, front);
+    strcat(replace_str, substitution);
+    strcat(replace_str, back);
+
+    free(this->internal_string);
+    this->internal_string = replace_str;
+    cur = &replace_str[strlen(front) + strlen(substitution)];
 }
