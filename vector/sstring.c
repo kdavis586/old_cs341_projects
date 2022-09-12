@@ -82,7 +82,14 @@ int sstring_substitute(sstring *this, size_t offset, char *target,
 char *sstring_slice(sstring *this, int start, int end) {
     // your code goes here
     assert(this);
-    return NULL;
+    assert(0 <= start);
+    assert(start <= end);
+    assert(end <= strlen(this->internal_string));
+
+    char * slice = calloc(end - start + 1, sizeof(char));
+    strncpy(slice, this->internal_string + start, end - start);
+
+    return slice;
 }
 
 void sstring_destroy(sstring *this) {
