@@ -8,7 +8,7 @@
 #include <string.h>
 #include <stdio.h>
 
-int main(int argc, char *argv[]) {
+int main() {
     // Basic Creation Test
     sstring * basic_sstr = cstr_to_sstring("hello");
     char * basic_expected = "hello";

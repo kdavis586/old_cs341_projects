@@ -4,6 +4,7 @@
  */
 #include "vector.h"
 #include <assert.h>
+#include <stdio.h>
 
 /**
  * 'INITIAL_CAPACITY' the initial size of the dynamically.
@@ -141,13 +142,13 @@ void vector_resize(vector *this, size_t n) {
         if (n > vector_capacity(this)) {
             // Need to reallocate the array
             size_t new_capacity = get_new_capacity(n);
-            this->array = reallocarray(this->array, new_capacity, sizeof(void *));
-            this->capacity = new_capacity;
+            vector_reserve(this, new_capacity);
         }
 
         size_t i = vector_size(this);
         while (i < n) {
             this->array[i] = this->default_constructor();
+            this->size++;
             i++;
         }
     }
@@ -168,8 +169,11 @@ bool vector_empty(vector *this) {
 void vector_reserve(vector *this, size_t n) {
     assert(this);
     // your code here
-    size_t new_capacity = get_new_capacity(n);
-    this->array = reallocarray(this->array, new_capacity, sizeof(void *));
+    if (n > vector_capacity(this)) {
+        size_t new_capacity = get_new_capacity(n);
+        this->array = reallocarray(this->array, new_capacity, sizeof(void *));
+        this->capacity = new_capacity;
+    }
 }
 
 void **vector_at(vector *this, size_t position) {
@@ -183,7 +187,9 @@ void vector_set(vector *this, size_t position, void *element) {
     assert(this);
     // your code here
     assert(position < vector_size(this));
-    this->destructor(this->array[position]);
+    if (this->array[position]) {
+        this->destructor(this->array[position]);
+    }
     this->array[position] = this->copy_constructor(element);
 }
 
@@ -211,9 +217,9 @@ void vector_push_back(vector *this, void *element) {
     // your code here
     if (vector_size(this) == vector_capacity(this)) {
         // At max capacity, logarithmically resize array
-        vector_resize(this, vector_capacity(this) + 1);
+        vector_reserve(this, vector_capacity(this) + 1);
     }
-
+    
     this->array[vector_size(this)] = this->copy_constructor(element);
     this->size++;
 }
@@ -231,18 +237,16 @@ void vector_insert(vector *this, size_t position, void *element) {
     assert(position < vector_size(this));
     if (vector_size(this) == vector_capacity(this)) {
         // At max capacity, logarithmically resize array
-        vector_resize(this, vector_capacity(this) + 1);
+        vector_reserve(this, vector_capacity(this) + 1);
     }
-    
+
+    //Move all of the elements forward
+    size_t i;
+    for (i = vector_size(this); i > position; i--) {
+        this->array[i] = this->array[i - 1];
+    }
     this->size++;
-
-    // Move all of the elements forward
-    size_t i = position;
-    while (i < vector_size(this)) { 
-        this->array[i + 1] = this->array[i];
-        i++;
-    }
-
+    
     // Set the desired position
     this->array[position] = this->copy_constructor(element);
 }
@@ -254,10 +258,9 @@ void vector_erase(vector *this, size_t position) {
     this->destructor(this->array[position]);
     if (position < (vector_size(this) - 1)) {
         // Move all of the elements
-        size_t i = position;
-        for (; i < vector_size(this) - 1; i++) {
-            void * value = vector_get(this, i + 1);
-            vector_set(this, i, value);
+        size_t i;
+        for (i = position; i < vector_size(this) - 1; i++) {
+            this->array[i] = this->array[i + 1];
         }
     }
 
@@ -270,9 +273,12 @@ void vector_clear(vector *this) {
     // your code here
     assert(this);
     size_t i;
-    for (i = vector_size(this) - 1; i >= 0; i--) {
-        vector_erase(this, i);
+    for (i = 0; i < vector_size(this); i++) {
+        if (this->array[i]) {
+            this->destructor(this->array[i]);
+        }
     }
+    this->size = 0;
 }
 
 // The following is code generated:
