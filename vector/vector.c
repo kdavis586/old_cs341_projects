@@ -142,12 +142,13 @@ void vector_resize(vector *this, size_t n) {
             // Need to reallocate the array
             size_t new_capacity = get_new_capacity(n);
             this->array = reallocarray(this->array, new_capacity, sizeof(void *));
+            this->capacity = new_capacity;
         }
 
         size_t i = vector_size(this);
         while (i < n) {
             this->array[i] = this->default_constructor();
-            this->size++;
+            i++;
         }
     }
 }
@@ -161,7 +162,7 @@ size_t vector_capacity(vector *this) {
 bool vector_empty(vector *this) {
     assert(this);
     // your code here
-    return (bool) this->size;
+    return (bool)!(this->size);
 }
 
 void vector_reserve(vector *this, size_t n) {
@@ -175,7 +176,7 @@ void **vector_at(vector *this, size_t position) {
     assert(this);
     // your code here
     assert(position < vector_size(this));
-    return this->array[position];
+    return &(this->array[position]);
 }
 
 void vector_set(vector *this, size_t position, void *element) {
