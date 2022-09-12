@@ -214,7 +214,6 @@ void vector_push_back(vector *this, void *element) {
         vector_resize(this, vector_capacity(this) + 1);
     }
 
-    this->destructor(this->array[vector_size(this)]);
     this->array[vector_size(this)] = this->copy_constructor(element);
     this->size++;
 }
