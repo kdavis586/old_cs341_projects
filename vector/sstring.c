@@ -14,7 +14,7 @@
 
 struct sstring {
     // Anything you want
-    char * internal_string = NULL;
+    char * internal_string = calloc(1, sizeof(char));
 };
 
 sstring *cstr_to_sstring(const char *input) {
@@ -34,7 +34,7 @@ char *sstring_to_cstr(sstring *input) {
 
     char * cstr = malloc(strlen(input->internal_string) + 1);
     strcpy(cstr, input->internal_string);
-    
+
     return cstr;
 }
 
@@ -43,7 +43,9 @@ int sstring_append(sstring *this, sstring *addition) {
     assert(this);
     assert(addition);
 
-
+    this->internal_string = reallocarray(this->internal_string,
+        strlen(this->internal_string) + strnlen(addition->internal_string) + 1,
+        sizeof(char));
 
     strcat(this->internal_string, addition->internal_string);
 
@@ -53,7 +55,21 @@ int sstring_append(sstring *this, sstring *addition) {
 vector *sstring_split(sstring *this, char delimiter) {
     // your code goes here
     assert(this);
-    return NULL;
+    char * cstr = this->internal_string;
+    vector * split_res = vector_create(&string_copy_constructor, &string_destructor, &string_default_constructor);
+    size_t i;
+    char * substr_start = 0;
+    for (i = 0; i < strlen(cstr); i++) {
+        if (cstr[i] == delimiter) {
+            size_t substr_len = i - substr_start - 1;
+            char * split_str = calloc(substr_len + 1, sizeof(char));
+            strncpy(split_str, &cstr[substr_start], substr_len);
+            vector_push_back(split_res, split_str);
+            free(split_str); // copy constructor made a deep copy, no longer need this memory
+        }
+    }
+
+    return split_res;
 }
 
 int sstring_substitute(sstring *this, size_t offset, char *target,
@@ -72,4 +88,8 @@ char *sstring_slice(sstring *this, int start, int end) {
 void sstring_destroy(sstring *this) {
     // your code goes here
     assert(this);
+    free(this->internal_string);
+    this->internal_string = NULL;
+    free(this)
+    this = NULL;
 }
