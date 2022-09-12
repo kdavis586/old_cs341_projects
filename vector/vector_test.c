@@ -70,5 +70,32 @@ int main() {
     assert(*(int *)*vector_at(int_vector, 2) == 3);
     vector_destroy(int_vector);
 
+    // remaking the vector to reset capacity;
+    int_vector = vector_create(&int_copy_constructor, &int_destructor, &int_default_constructor);
+
+    // Test push back and vector intsert trigger automatic reallocation
+    int value = 1000;
+    for (i = 0; i < 255; i++) {
+        vector_push_back(int_vector, &value);
+    }
+    for (i = 0; i < 255; i++) {
+        assert(*(int *)*vector_at(int_vector, i) == value);
+    }
+
+    vector_destroy(int_vector);
+    int_vector = vector_create(NULL, NULL, NULL);
+    int last_value = 343;
+    vector_push_back(int_vector, &last_value);
+    for (i = 0; i < 255; i++) {
+        vector_insert(int_vector, 0, &value);
+    }
+    for (i = 0; i < vector_size(int_vector) - 1; i++) {
+        assert(*(int *)*vector_at(int_vector, i) == value);
+    }
+    assert(*(int *)*vector_back(int_vector) == last_value);
+    vector_erase(int_vector, 0);
+    vector_clear(int_vector);
+    vector_destroy(int_vector);
+    
     return 0;
 }
