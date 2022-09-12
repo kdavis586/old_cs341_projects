@@ -50,7 +50,7 @@ int main(int argc, char *argv[]) {
     vector_destroy(split_expected);
     vector_destroy(split_actual);
 
-    //sstring_substitute Test
+    // sstring_substitute Test
     sstring * sub_base = cstr_to_sstring("{} 1234");
     char * sub_expected = "Hello World!";
     assert(sstring_substitute(sub_base, 2, "1234", "World!") == 0);
@@ -59,6 +59,14 @@ int main(int argc, char *argv[]) {
     assert(strcmp(sub_expected, sub_actual) == 0);
     free(sub_actual);
     sstring_destroy(sub_base);
+
+    // sstring_slice Test
+    sstring * slice_base = cstr_to_sstring("sliceKaelanme");
+    char * slice_expected = "Kaelan";
+    char * slice_actual = sstring_slice(slice_base, 5, 11);
+    assert(strcmp(slice_expected, slice_actual) == 0);
+    free(slice_actual);
+    sstring_destroy(slice_base);
     
     return 0;
 }
