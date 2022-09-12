@@ -6,6 +6,7 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 
 int main() {
     // Write your test cases here
@@ -61,41 +62,33 @@ int main() {
     assert(*(int *)*vector_at(int_vector, 1) == 5);
     assert(*(int *)*vector_at(int_vector, 2) == 2);
     assert(*(int *)*vector_at(int_vector, 3) == 3);
+    vector_clear(int_vector);
+    vector_push_back(int_vector, &insert_value);
+    vector_insert(int_vector, 0, &insert_value);
+    vector_insert(int_vector, (vector_size(int_vector) - 1), &insert_value);
 
     // test vector erase
-    vector_erase(int_vector, 1);
-    assert(vector_size(int_vector) == 3);
-    assert(*(int *)*vector_at(int_vector, 0) == 1);
-    assert(*(int *)*vector_at(int_vector, 1) == 2);
-    assert(*(int *)*vector_at(int_vector, 2) == 3);
-    vector_destroy(int_vector);
-
-    // remaking the vector to reset capacity;
-    int_vector = vector_create(&int_copy_constructor, &int_destructor, &int_default_constructor);
-
-    // Test push back and vector intsert trigger automatic reallocation
-    int value = 1000;
-    for (i = 0; i < 255; i++) {
-        vector_push_back(int_vector, &value);
-    }
-    for (i = 0; i < 255; i++) {
-        assert(*(int *)*vector_at(int_vector, i) == value);
-    }
-
-    vector_destroy(int_vector);
-    int_vector = vector_create(NULL, NULL, NULL);
-    int last_value = 343;
-    vector_push_back(int_vector, &last_value);
-    for (i = 0; i < 255; i++) {
-        vector_insert(int_vector, 0, &value);
-    }
-    for (i = 0; i < vector_size(int_vector) - 1; i++) {
-        assert(*(int *)*vector_at(int_vector, i) == value);
-    }
-    assert(*(int *)*vector_back(int_vector) == last_value);
-    vector_erase(int_vector, 0);
     vector_clear(int_vector);
+    vector_push_back(int_vector, &push_value);
+    vector_erase(int_vector, 0);
+    assert(vector_size(int_vector) == 0);
     vector_destroy(int_vector);
     
+    // test try to find error in test insert
+    vector * string_vec = vector_create(&string_copy_constructor, &string_destructor, &string_default_constructor);
+    char * push_string = "push back";
+    vector_push_back(string_vec, push_string);
+
+    char * insert_string = "insert this string!";
+    for (i = 0; i < 16; i++) {
+        vector_insert(string_vec, 0, insert_string);
+        vector_insert(string_vec, 1, insert_string);
+        vector_insert(string_vec, vector_size(string_vec) - 1, insert_string);
+    }  
+    assert(strcmp((char *)*vector_back(string_vec), push_string) == 0);
+    for (i = 0; i < (16 - 1); i++) {
+        assert(strcmp((char *)*vector_at(string_vec, i), insert_string) == 0);
+    }
+    vector_destroy(string_vec);
     return 0;
 }
