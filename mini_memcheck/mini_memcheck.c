@@ -51,11 +51,14 @@ void *mini_realloc(void *payload, size_t request_size, const char *filename,
         return NULL;
     }
 
-    total_memory_requested += request_size
+    
     void * temp = realloc(payload, sizeof(meta_data) + request_size);
     if (!temp) {
         return NULL;
     }
+
+    total_memory_requested -= payload->request_size;
+    total_memory_requested += request_size
 
     if (payload != temp) {
         // Memory was moved, restore the link
@@ -82,7 +85,12 @@ void *mini_realloc(void *payload, size_t request_size, const char *filename,
 }
 
 void mini_free(void *payload) {
-    // your code here
+    if (_check_valid_address(payload)) {
+        total_memory_freed += (sizeof(meta_data) + (meta_data *) payload->request_size);
+        free(payload);
+    } else {
+        invalid_addresses++;
+    }
 }
 
 // Checks to see if the input payload is a valid address to free in the linked list
