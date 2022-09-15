@@ -7,6 +7,13 @@
 #include <stdio.h>
 #include <string.h>
 
+meta_data * head;
+size_t total_memory_requested;
+size_t total_memory_freed;
+size_t invalid_addresses;
+
+bool _check_valid_address(void *payload);
+
 void *mini_malloc(size_t request_size, const char *filename,
                   void *instruction) {
     meta_data * node = malloc(sizeof(meta_data) + request_size);
@@ -21,7 +28,7 @@ void *mini_malloc(size_t request_size, const char *filename,
     node->next = head;
 
     head = node;
-    return node;
+    return (node + sizeof(meta_data));
 }
 
 void *mini_calloc(size_t num_elements, size_t element_size,
@@ -38,33 +45,34 @@ void *mini_calloc(size_t num_elements, size_t element_size,
     node->instruction = instruction;
     node->next = head;
 
-    memset(node + sizeof(meta_data), 0, amount_requested)
+    memset(node + sizeof(meta_data), 0, amount_requested);
 
     head = node;
-    return node;
+    return (node + sizeof(meta_data));
 }
 
 void *mini_realloc(void *payload, size_t request_size, const char *filename,
                    void *instruction) {
+
     if (!_check_valid_address(payload)) {
         invalid_addresses++;
         return NULL;
     }
 
-    
-    void * temp = realloc(payload, sizeof(meta_data) + request_size);
+    meta_data * mta_data = (meta_data *)(payload - sizeof(meta_data));
+    void * temp = realloc(mta_data, sizeof(meta_data) + request_size);
     if (!temp) {
         return NULL;
     }
 
-    total_memory_requested -= payload->request_size;
-    total_memory_requested += request_size
+    total_memory_requested -= mta_data->request_size;
+    total_memory_requested += request_size;
 
-    if (payload != temp) {
+    if (mta_data != temp) {
         // Memory was moved, restore the link
         meta_data * start = head;
         while (start) {
-            if (start->next == payload) {
+            if (start->next == mta_data) {
                 start->next = temp;
                 break;
             }
@@ -75,19 +83,35 @@ void *mini_realloc(void *payload, size_t request_size, const char *filename,
         // Do not need anything here because payload will always be found, guarenteed by _check_valid_address
     }
     
-    payload = temp;
-    (meta_data *) payload->request_size = request_size;
-    (meta_data *) payload->filename = filename;
-    (meta_data *) payload->instruction = instruction;
+    mta_data = temp;
+    temp = NULL;
+    mta_data->request_size = request_size;
+    mta_data->filename = filename;
+    mta_data->instruction = instruction;
     // no need to edit this nodes place in the linked list
 
-    return payload;
+    return mta_data;
 }
 
 void mini_free(void *payload) {
     if (_check_valid_address(payload)) {
-        total_memory_freed += (sizeof(meta_data) + (meta_data *) payload->request_size);
-        free(payload);
+        if (payload) {
+            meta_data * mta_data = (meta_data *)(payload - sizeof(meta_data));
+            total_memory_freed += (sizeof(meta_data) + mta_data->request_size);
+
+            // unlink payload before freeing
+            meta_data * start = head;
+
+            while (start) {
+                if (start->next == mta_data) {
+                    start->next = mta_data->next;
+                    break;
+                }
+
+                start = start->next;
+            } // Will always be unlinked because _check_valid_address was successful
+            free(mta_data);
+        }
     } else {
         invalid_addresses++;
     }
@@ -100,9 +124,10 @@ bool _check_valid_address(void *payload) {
         return true;
     }
 
-    memset * start = head;
+    meta_data * start = head;
+    meta_data * mta_data = (meta_data * )(payload - sizeof(meta_data));
     while (start) {
-        if (start == payload) {
+        if (start == mta_data) {
             return true;
         }
 
