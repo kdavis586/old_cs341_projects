@@ -56,6 +56,9 @@ void *mini_realloc(void *payload, size_t request_size, const char *filename,
     if (!_check_valid_address(payload)) {
         invalid_addresses++;
         return NULL;
+    } else if (!request_size) {
+        mini_free(payload);
+        return NULL;
     }
 
     void * mta_data = payload - sizeof(meta_data);
@@ -119,7 +122,7 @@ void mini_free(void *payload) {
                 head = head->next;
             } // Will always be unlinked because _check_valid_address was successful
             free(to_free);
-            to_free = NULL; // TODO: this doesnt actually affect the head variable 
+            to_free = NULL;
         }
     } else {
         invalid_addresses++;
