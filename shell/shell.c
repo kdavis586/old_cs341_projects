@@ -37,6 +37,8 @@ int shell(int argc, char *argv[]) {
         ssize_t chars = getline(&input_buffer, &input_size, stdin);
         if (chars == -1) {
             // getline failed
+            free(cwd);
+            free(input_buffer);
             return 1;
         } else if (chars > 0 && input_buffer[chars - 1] == '\n') {
             // replace the newline character with char NUL
