@@ -7,6 +7,7 @@
 #include "vector.h"
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
 typedef struct process {
@@ -40,6 +41,12 @@ int shell(int argc, char *argv[]) {
         } else if (chars > 0 && input_buffer[chars - 1] == '\n') {
             // replace the newline character with char NUL
             input_buffer[chars - 1] = '\0';
+        }
+
+        if (strcmp(input_buffer, "exit") == 0) {
+            free(cwd);
+            free(input_buffer);
+            break;
         }
 
     }
