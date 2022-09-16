@@ -16,16 +16,16 @@ bool _check_valid_address(void *payload);
 
 void *mini_malloc(size_t request_size, const char *filename,
                   void *instruction) {
-    meta_data * node = malloc(sizeof(meta_data) + request_size);
+    void * node = malloc(sizeof(meta_data) + request_size);
     if (!node) {
         return NULL;
     }
 
     total_memory_requested += request_size;
-    node->request_size = request_size;
-    node->filename = filename;
-    node->instruction = instruction;
-    node->next = head;
+    ((meta_data *) node)->request_size = request_size;
+    ((meta_data *) node)->filename = filename;
+    ((meta_data *) node)->instruction = instruction;
+    ((meta_data *) node)->next = head;
 
     head = node;
     return (node + sizeof(meta_data));
@@ -34,16 +34,16 @@ void *mini_malloc(size_t request_size, const char *filename,
 void *mini_calloc(size_t num_elements, size_t element_size,
                   const char *filename, void *instruction) {
     size_t amount_requested = (num_elements * element_size);
-    meta_data * node = malloc(sizeof(meta_data) + amount_requested);
+    void * node = malloc(sizeof(meta_data) + amount_requested);
     if (!node) {
         return NULL;
     }
 
     total_memory_requested += amount_requested;
-    node->request_size = amount_requested;
-    node->filename = filename;
-    node->instruction = instruction;
-    node->next = head;
+    ((meta_data *) node)->request_size = amount_requested;
+    ((meta_data *) node)->filename = filename;
+    ((meta_data *) node)->instruction = instruction;
+    ((meta_data *) node)->next = head;
 
     memset(node + sizeof(meta_data), 0, amount_requested);
 
@@ -53,19 +53,18 @@ void *mini_calloc(size_t num_elements, size_t element_size,
 
 void *mini_realloc(void *payload, size_t request_size, const char *filename,
                    void *instruction) {
-
     if (!_check_valid_address(payload)) {
         invalid_addresses++;
         return NULL;
     }
 
-    meta_data * mta_data = (meta_data *)(payload - sizeof(meta_data));
+    void * mta_data = payload - sizeof(meta_data);
     void * temp = realloc(mta_data, sizeof(meta_data) + request_size);
     if (!temp) {
         return NULL;
     }
 
-    total_memory_requested -= mta_data->request_size;
+    total_memory_requested -= ((meta_data *) mta_data)->request_size;
     total_memory_requested += request_size;
 
     if (mta_data != temp) {
@@ -85,32 +84,42 @@ void *mini_realloc(void *payload, size_t request_size, const char *filename,
     
     mta_data = temp;
     temp = NULL;
-    mta_data->request_size = request_size;
-    mta_data->filename = filename;
-    mta_data->instruction = instruction;
+    ((meta_data *) mta_data)->request_size = request_size;
+    ((meta_data *) mta_data)->filename = filename;
+    ((meta_data *) mta_data)->instruction = instruction;
     // no need to edit this nodes place in the linked list
 
-    return mta_data;
+    return mta_data + sizeof(meta_data);
 }
 
 void mini_free(void *payload) {
     if (_check_valid_address(payload)) {
         if (payload) {
             meta_data * mta_data = (meta_data *)(payload - sizeof(meta_data));
-            total_memory_freed += (sizeof(meta_data) + mta_data->request_size);
+            total_memory_freed += (mta_data->request_size);
 
             // unlink payload before freeing
-            meta_data * start = head;
-
-            while (start) {
-                if (start->next == mta_data) {
-                    start->next = mta_data->next;
+            meta_data * true_head = head;
+            meta_data * prev = NULL;
+            meta_data * to_free = NULL;
+            while (head) {
+                if (head == mta_data) {
+                    if (prev) {
+                        prev->next = head->next;
+                        to_free = head;
+                        head = true_head;
+                    } else {
+                        // found match at the start of the LL, edit head differently
+                        to_free = head;
+                        head = head->next;
+                    }
                     break;
                 }
-
-                start = start->next;
+                prev = head;
+                head = head->next;
             } // Will always be unlinked because _check_valid_address was successful
-            free(mta_data);
+            free(to_free);
+            to_free = NULL; // TODO: this doesnt actually affect the head variable 
         }
     } else {
         invalid_addresses++;
