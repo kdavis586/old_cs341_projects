@@ -13,6 +13,7 @@
 // Forward declare helper functions
 ssize_t _get_input(char ** buffer, size_t * size);
 void _cleanup();
+int _parse_arguments(int argc, char * argv[]);
 
 typedef struct process {
     char *command;
@@ -21,15 +22,27 @@ typedef struct process {
 
 // Globals that will be used for the duration of the shell
 static char * CWD;
+
 static char * INPUT_BUFFER;
 static size_t INPUT_SIZE;
+
 static vector * CMD_HIST;
+
+static unsigned int MODE;
+static char * HISTORY_FILE;
+static char * SCRIPT_FILE;
 
 int shell(int argc, char *argv[]) {
     // Init variables that will be used for the lifetime of the shell
+    opterr = 0; // No error reporting on getopt
     pid_t shell_pid = getpid();
     CWD = get_full_path(".");
     CMD_HIST = vector_create(&string_copy_constructor, &string_destructor, &string_default_constructor);
+
+    // check for optional arguments
+    if (_parse_arguments(argc, argv) == -1) {
+        return 1;
+    }
 
     while(true) {
         // Print shell prompt line
@@ -70,4 +83,51 @@ void _cleanup() {
     free(CWD);
     free(INPUT_BUFFER);
     vector_destroy(CMD_HIST);
+}
+
+int _parse_arguments(int argc, char * argv[]) {
+    // TODO: Handle the when arguments are passed without a flag
+    // TODO: Figure out if it is okay that getopt prints to stderr without using format.h
+    if (argc <= 5) {
+        int opt;
+        while((opt = getopt(argc, argv, "h:f:")) != -1) {
+            switch(opt) {
+                case 'h':
+                    if (HISTORY_FILE) {
+                        // History file was already set, same option twice
+                        print_usage();
+                        return -1;
+                    }
+
+                    HISTORY_FILE = optarg;
+                    break;
+                case 'f':
+                    if (SCRIPT_FILE) {
+                        // Script file was already set, same option twice
+                        print_usage();
+                        return -1;
+                    }
+
+                    SCRIPT_FILE = optarg;
+                    break;
+                case '?':
+                    print_usage();
+                    return -1;
+            }
+        }
+
+        if (HISTORY_FILE && SCRIPT_FILE) {
+            MODE = 3;
+        } else if (SCRIPT_FILE) {
+            MODE = 2;
+        } else if (HISTORY_FILE) {
+            MODE = 1;
+        }
+        
+        return 0;
+    } 
+
+    // Too many arguments passed, max is 5 for: program_name option1 filename1 option2 filename2
+    print_usage();
+    return -1;
 }
