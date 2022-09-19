@@ -254,7 +254,11 @@ bool _run_builtin(vector * args) {
 void _print_history() {
     size_t i;
     for (i = 0; i < vector_size(CMD_HIST); i++) {
+        char * command = (char *)*vector_at(CMD_HIST, i);
+        size_t command_len = strlen(command);
+        command[command_len - 1] = '\0';
         print_history_line(i, (char *)*vector_at(CMD_HIST, i));
+        command[command_len - 1] = '\n';
     }
 }
 
