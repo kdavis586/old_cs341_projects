@@ -10,6 +10,8 @@
 #include <string.h>
 #include <unistd.h>
 
+
+
 // Forward declare helper functions
 ssize_t _get_input(char ** buffer, size_t * size);
 void _cleanup();
@@ -29,8 +31,8 @@ static size_t INPUT_SIZE;
 static vector * CMD_HIST;
 
 static unsigned int MODE;
-static char * HISTORY_FILE;
-static char * SCRIPT_FILE;
+static FILE * HISTORY_FILE;
+static FILE * SCRIPT_FILE;
 
 int shell(int argc, char *argv[]) {
     // Init variables that will be used for the lifetime of the shell
@@ -87,33 +89,50 @@ void _cleanup() {
 
 int _parse_arguments(int argc, char * argv[]) {
     // TODO: Handle the when arguments are passed without a flag
-    // TODO: Figure out if it is okay that getopt prints to stderr without using format.h
+    char * hist_path = NULL;
+    char * script_path = NULL;
+
     if (argc <= 5) {
         int opt;
         while((opt = getopt(argc, argv, "h:f:")) != -1) {
             switch(opt) {
                 case 'h':
-                    if (HISTORY_FILE) {
+                    if (hist_path) {
                         // History file was already set, same option twice
                         print_usage();
                         return -1;
                     }
 
-                    HISTORY_FILE = optarg;
+                    hist_path = optarg;
                     break;
                 case 'f':
-                    if (SCRIPT_FILE) {
+                    if (script_path) {
                         // Script file was already set, same option twice
                         print_usage();
                         return -1;
                     }
-
-                    SCRIPT_FILE = optarg;
+                    
+                    script_path = optarg;
                     break;
                 case '?':
                     print_usage();
                     return -1;
             }
+        }
+        // Check that no non-opt args were passed
+        if (argv[optind] != NULL) {
+            print_usage();
+            return -1;
+        }
+
+        if (hist_path && !(HISTORY_FILE = fopen(hist_path, "w"))) {
+            // opening/creating history file failed
+            return -1;
+        }
+        
+        if (script_path && !(SCRIPT_FILE = fopen(script_path, "r"))) {
+            print_script_file_error();
+            return -1;
         }
 
         if (HISTORY_FILE && SCRIPT_FILE) {
