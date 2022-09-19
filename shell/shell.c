@@ -5,6 +5,8 @@
 #include "format.h"
 #include "shell.h"
 #include "vector.h"
+#include <errno.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -24,16 +26,16 @@ typedef struct process {
 } process;
 
 // Globals that will be used for the duration of the shell
-static char * CWD;
+static char * CWD; // Current working directory
 
-static char * INPUT_BUFFER;
-static size_t INPUT_SIZE;
+static char * INPUT_BUFFER; // Used for getting the user input
+static size_t INPUT_SIZE;   // Used for getting the user input
 
-static vector * CMD_HIST;
+static vector * CMD_HIST;   // Used to store the history of commands used during the shell's lifetime
 
-static unsigned int MODE;
-static FILE * HISTORY_FILE;
-static FILE * SCRIPT_FILE;
+static unsigned int MODE;   // indicates which arguments were passed (0 -> none, 1 -> -h, 2 -> -f, 3, -h and -f)
+static FILE * HISTORY_FILE; // File for logging the history (if -h)
+static FILE * SCRIPT_FILE;  // File to run commands from (if -f)
 
 int shell(int argc, char *argv[]) {
     // Init variables that will be used for the lifetime of the shell
@@ -47,27 +49,43 @@ int shell(int argc, char *argv[]) {
         return 1;
     }
 
+    signal(SIGINT, SIG_DFL); // TODO: Redirect SIGING (Ctrl + C) to kill the currently running foreground process
     while(true) {
         // Print shell prompt line
         print_prompt(CWD, shell_pid);
 
         // Read the user input and check to make sure it worked
         ssize_t chars = _get_input(&INPUT_BUFFER, &INPUT_SIZE);
-        if (chars == -1) {
+        if (chars == -1 && errno != 0) {
             // getline failed
             _cleanup();
             return 1;
-        } else if (chars > 0 && INPUT_BUFFER[chars - 1] == '\n') {
-            // replace the newline character with char NUL
-            INPUT_BUFFER[chars - 1] = '\0';
-
+        } else if (chars > 0) {
             // Add the input into a history vector
-            vector_push_back(CMD_HIST, INPUT_BUFFER);
+            if (strcmp(INPUT_BUFFER, "exit\n") != 0) {
+                // Push back with the newline character for proper writing
+                vector_push_back(CMD_HIST, INPUT_BUFFER);
+            }
+
+            // replace the newline character with char NUL
+            if (INPUT_BUFFER[chars - 1] == '\n') {
+                INPUT_BUFFER[chars - 1] = '\0';
+            }
         }
 
-        if (strcmp(INPUT_BUFFER, "exit") == 0) {
-            // exit was input, free memory and exit the shell.
-             _cleanup();
+        if (strcmp(INPUT_BUFFER, "exit") == 0 || chars == -1) {
+            /*
+            * exit was input, free memory and exit the shell.
+            * or
+            * chars == -1 from getline WITHOUT errno being set to a valid getline error value
+            */
+            size_t i;
+            if (MODE == 1 || MODE == 3) {
+                for (i = 0; i < vector_size(CMD_HIST); i++) {
+                    fputs((char *)*vector_at(CMD_HIST, i), HISTORY_FILE);
+                }
+            }
+            _cleanup();
             break;
         }
 
@@ -75,6 +93,7 @@ int shell(int argc, char *argv[]) {
     return 0;
 }
 
+// Gets the input line from user
 ssize_t _get_input(char ** buffer, size_t * size) {
     free(*buffer);
     *buffer = NULL;
@@ -82,12 +101,14 @@ ssize_t _get_input(char ** buffer, size_t * size) {
     return getline(buffer, size, stdin);
 }
 
+// Frees all manually allocated memory
 void _cleanup() {
     free(CWD);
     free(INPUT_BUFFER);
     vector_destroy(CMD_HIST);
 }
 
+// Parses arguments passed with starting the shell, checks them for validity and sets global variables accordingly
 bool _parse_arguments(int argc, char * argv[]) {
     if (argc > 5) {
         // Too many arguments passed, max is 5 for: program_name option1 filename1 option2 filename2
@@ -102,7 +123,7 @@ bool _parse_arguments(int argc, char * argv[]) {
         return false;
     }
 
-    if (hist_path && !(HISTORY_FILE = fopen(hist_path, "w"))) {
+    if (hist_path && !(HISTORY_FILE = fopen(hist_path, "a"))) {
         // opening/creating history file failed
         return false;
     }
@@ -123,6 +144,7 @@ bool _parse_arguments(int argc, char * argv[]) {
     return true;
 }
 
+// Validates that the options passed into argv are valid and expected
 bool _validate_options(int argc, char * argv[], char ** hist_path, char ** script_path) {
     int opt;
     while((opt = getopt(argc, argv, "h:f:")) != -1) {
