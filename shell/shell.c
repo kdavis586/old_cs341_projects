@@ -15,8 +15,8 @@
 // Forward declare helper functions
 ssize_t _get_input(char ** buffer, size_t * size);
 void _cleanup();
-int _parse_arguments(int argc, char * argv[]);
-bool _validate_options(char ** hist_path, char ** script_path)
+bool _parse_arguments(int argc, char * argv[]);
+bool _validate_options(int argc, char * argv[], char ** hist_path, char ** script_path);
 
 typedef struct process {
     char *command;
@@ -43,7 +43,7 @@ int shell(int argc, char *argv[]) {
     CMD_HIST = vector_create(&string_copy_constructor, &string_destructor, &string_default_constructor);
 
     // check for optional arguments
-    if (_parse_arguments(argc, argv) == -1) {
+    if (!_parse_arguments(argc, argv)) {
         return 1;
     }
 
@@ -88,28 +88,28 @@ void _cleanup() {
     vector_destroy(CMD_HIST);
 }
 
-int _parse_arguments(int argc, char * argv[]) {
+bool _parse_arguments(int argc, char * argv[]) {
     if (argc > 5) {
         // Too many arguments passed, max is 5 for: program_name option1 filename1 option2 filename2
         print_usage();
-        return -1;
+        return false;
     }
 
     char * hist_path = NULL;
     char * script_path = NULL;
     
-    if (!_validate_options(&hist_path, &script_path)) {
-        return -1;
+    if (!_validate_options(argc, argv, &hist_path, &script_path)) {
+        return false;
     }
 
     if (hist_path && !(HISTORY_FILE = fopen(hist_path, "w"))) {
         // opening/creating history file failed
-        return -1;
+        return false;
     }
     
     if (script_path && !(SCRIPT_FILE = fopen(script_path, "r"))) {
         print_script_file_error();
-        return -1;
+        return false;
     }
 
     if (HISTORY_FILE && SCRIPT_FILE) {
@@ -120,30 +120,30 @@ int _parse_arguments(int argc, char * argv[]) {
         MODE = 1;
     }
     
-    return 0;
+    return true;
 }
 
-bool _validate_options(char ** hist_path, char ** script_path) {
+bool _validate_options(int argc, char * argv[], char ** hist_path, char ** script_path) {
     int opt;
     while((opt = getopt(argc, argv, "h:f:")) != -1) {
         switch(opt) {
             case 'h':
-                if (hist_path) {
+                if (*hist_path) {
                     // History file was already set, same option twice
                     print_usage();
                     return false;
                 }
 
-                hist_path = optarg;
+                *hist_path = optarg;
                 break;
             case 'f':
-                if (script_path) {
+                if (*script_path) {
                     // Script file was already set, same option twice
                     print_usage();
                     return false;
                 }
                 
-                script_path = optarg;
+                *script_path = optarg;
                 break;
             case '?':
                 print_usage();
@@ -156,5 +156,5 @@ bool _validate_options(char ** hist_path, char ** script_path) {
         return false;
     }
 
-    return true
+    return true;
 }
