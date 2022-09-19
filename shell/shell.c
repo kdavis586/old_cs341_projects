@@ -21,17 +21,18 @@ ssize_t _get_input(char ** buffer, size_t * size);
 void _cleanup();
 bool _parse_arguments(int argc, char * argv[]);
 bool _validate_options(int argc, char * argv[], char ** hist_path, char ** script_path);
-bool _run_builtin(vector * args);
+bool _run_builtin(char * command, vector * args);
 void _print_history();
-vector * _split_input(char * command);
+void _split_input(char * command);
 void _handle_get_input(ssize_t chars);
 void _exit_success();
 void _handle_exit();
 bool _handle_history(vector * args);
 bool _handle_prev_command(vector * args);
-bool _handle_cd(vector * args);
-bool _handle_prefix();
+bool _handle_cd(char * command, vector * args);
+bool _handle_prefix(char * command);
 void _add_to_history(char * command);
+void _run_command(char * command);
 
 // Define process struct
 typedef struct process {
@@ -50,7 +51,7 @@ static FILE * HISTORY_FILE; // File for logging the history (if -h)
 static FILE * SCRIPT_FILE;  // File to run commands from (if -f)
 static FILE * INPUT_STREAM; // Used to store the stream to read commands from
 static ssize_t CHARS_READ;
-
+static vector * CMD_ARGS;
 
 /*
  *  MAIN SHELL FUNCTION
@@ -59,6 +60,7 @@ int shell(int argc, char *argv[]) {
     pid_t shell_pid;
     _shell_setup(&shell_pid, argc, argv);
 
+    CMD_ARGS = string_vector_create();
     while(true) {
         print_prompt(CWD, shell_pid);
         CHARS_READ = _get_input(&INPUT_BUFFER, &INPUT_SIZE);
@@ -71,15 +73,7 @@ int shell(int argc, char *argv[]) {
                 INPUT_BUFFER[CHARS_READ - 1] = '\0';
             }
             _handle_exit();
-
-            
-            vector * command_args = _split_input(INPUT_BUFFER); // used for builtin
-            _run_builtin(command_args);
-            
-            if (RUN_SCRIPT) {
-                print_command(INPUT_BUFFER);
-            }
-            vector_destroy(command_args); // TODO: Very bad to free every call, use same vector and clear
+            _run_command(INPUT_BUFFER);
         }
 
     }
@@ -107,6 +101,7 @@ void _shell_setup(pid_t * shell_pid, int argc, char * argv[]) {
     SCRIPT_FILE = NULL;
     INPUT_STREAM = stdin;
     CHARS_READ = -1;
+    CMD_ARGS = NULL;
     
     *shell_pid = getpid();
 
@@ -138,7 +133,6 @@ bool _parse_arguments(int argc, char * argv[]) {
     }
 
     if (hist_path) {
-        fprintf(stderr, "path: %s\n", hist_path);
         HISTORY_FILE = fopen(hist_path, "a");
         if (!HISTORY_FILE) {
             print_history_file_error();
@@ -199,6 +193,9 @@ void _cleanup() {
 
     if (SCRIPT_FILE) fclose(SCRIPT_FILE);
     SCRIPT_FILE = NULL;
+
+    vector_destroy(CMD_ARGS);
+    CMD_ARGS = NULL;
 }
 
 // Validates that the options passed into argv are valid and expected
@@ -239,15 +236,16 @@ bool _validate_options(int argc, char * argv[], char ** hist_path, char ** scrip
 }
 
 // returns whether or not a builtin function ran
-bool _run_builtin(vector * args) {  
+bool _run_builtin(char * command, vector * args) {  
     if (vector_size(args) == 0) return false;
     if (_handle_history(args)) return true;
     if (_handle_prev_command(args)) return true;
-    if (_handle_cd(args)) return true;
-    if (_handle_prefix(args)) return true;
+    if (_handle_cd(command, args)) return true;
+    if (_handle_prefix(command)) return true;
 
-    print_invalid_command(INPUT_BUFFER); // TODO: Is this print correct?
-    _add_to_history(INPUT_BUFFER);
+    // TODO: Currently prints if command is not builtin, what if external command?
+    print_invalid_command(command); 
+    _add_to_history(command);
     return false;
 }
 
@@ -256,33 +254,32 @@ void _print_history() {
     for (i = 0; i < vector_size(CMD_HIST); i++) {
         char * command = (char *)*vector_at(CMD_HIST, i);
         size_t command_len = strlen(command);
-        command[command_len - 1] = '\0';
+        command[command_len] = '\0';
         print_history_line(i, (char *)*vector_at(CMD_HIST, i));
-        command[command_len - 1] = '\n';
+        command[command_len] = '\n';
     }
 }
 
-vector * _split_input(char * command) {
-    vector * command_args = string_vector_create();
+// splits the input of the command by spaces and stores the values in CMD_ARGS
+void _split_input(char * command) {
+    vector_clear(CMD_ARGS);
     char * command_copy = malloc(strlen(command) + 1);
     strcpy(command_copy, command);
     char * arg = strtok(command_copy, " ");
     if (arg) {
-        vector_push_back(command_args, arg);
+        vector_push_back(CMD_ARGS, arg);
     }
 
     while ((arg = strtok(NULL, " "))) {
-        vector_push_back(command_args, arg);
+        vector_push_back(CMD_ARGS, arg);
     }
     free(command_copy);
-    return command_args;
 }
 
 // Record history (if specified), cleanup, and exit successfully from shell
 void _exit_success() {
     size_t i;
     if (RECORD_HIST) {
-        fprintf(stderr, "Writing to: %p\n",HISTORY_FILE);
         for (i = 0; i < vector_size(CMD_HIST); i++) {
             char * command = (char *)*vector_at(CMD_HIST, i);
             // char * newline = strchr(command, '\n');
@@ -305,6 +302,7 @@ void _handle_exit() {
     }
 }
 
+// handles if user types "!history"
 bool _handle_history(vector * args) {
     if (vector_size(args) == 1) {
         char * command = (char *)*vector_at(args, 0);
@@ -317,6 +315,7 @@ bool _handle_history(vector * args) {
     return false;
 }
 
+// handles if user types #<n>
 bool _handle_prev_command(vector * args) {
     if (vector_size(args) == 1) {
         int n;
@@ -326,7 +325,7 @@ bool _handle_prev_command(vector * args) {
                 print_invalid_index();
             } else {
                 char * history_command = (char *)*vector_at(CMD_HIST, n);
-                // TODO: EXECUTE history_command
+                _run_command(history_command);
                 _add_to_history(history_command);
             }
             return true;
@@ -336,7 +335,8 @@ bool _handle_prev_command(vector * args) {
     return false;
 }
 
-bool _handle_cd(vector * args) {
+// handles if user types cd <path>
+bool _handle_cd(char * command, vector * args) {
     // TODO: change operation depending on '/' as first char or not
     if (vector_size(args) == 2) {
         char * cd = (char *)*vector_at(args, 0);
@@ -351,31 +351,33 @@ bool _handle_cd(vector * args) {
             free(CWD);
             CWD = NULL;
             CWD = get_full_path(".");
-            _add_to_history(INPUT_BUFFER); // adding input buffer because not segmented
+            _add_to_history(command); // adding input buffer because not segmented
             return true;
         }
     }
     return false;
 }
 
-bool _handle_prefix() {
-    char prefix[strlen(INPUT_BUFFER)];
+// hanldes if user types !<prefix>
+bool _handle_prefix(char * command) {
+    char prefix[strlen(command)];
 
-    if (sscanf(INPUT_BUFFER, "!%s", prefix) == 1) {
+    if (sscanf(command, "!%s", prefix) == 1) {
         size_t prefix_len = strlen(prefix);
         char * prefix_compare = malloc(sizeof(prefix));
         size_t i;
         bool match = false;
 
         if (vector_size(CMD_HIST) > 0) {
-            for (i = vector_size(CMD_HIST) - 1; i >= 0; i--) {
-                char * history_command = (char *)*vector_at(CMD_HIST, i);
+            for (i = 0; i < vector_size(CMD_HIST); i++) {
+                size_t idx = vector_size(CMD_HIST) - 1 - i;
+                char * history_command = (char *)*vector_at(CMD_HIST, idx);
                 prefix_compare[0] = '\0';
                 strncpy(prefix_compare, history_command, prefix_len);
                 prefix_compare[prefix_len] = '\0';
                 
                 if (!strcmp(prefix, prefix_compare)) {
-                    // TODO: EXECUTE command
+                    _run_command(history_command);
                     _add_to_history(history_command);
                     match = true;
                     break;
@@ -385,14 +387,34 @@ bool _handle_prefix() {
 
         // no matches
         if (!match) print_no_history_match();
+        free(prefix_compare);
         return true;
     }
+    
     return false;
 }
 
+// Adds command to history with a newline character
 void _add_to_history(char * command) {
-    if (command[CHARS_READ - 1] == '\0') {
-        command[CHARS_READ - 1] = '\n';
+    if (command[CHARS_READ] == '\0') {
+        command[CHARS_READ] = '\n';
     }
     vector_push_back(CMD_HIST, command);
+}
+
+void _run_command(char * command) {
+    fprintf(stderr, "About to run: '%s'\n", command);
+    char * newline = strchr(command, '\n');
+    if (newline) {
+        *newline = '\0';
+    }
+    
+    _split_input(command); // used for _run_builtin   
+    if(!_run_builtin(command, CMD_ARGS)) {
+        // something
+    }
+
+    if (RUN_SCRIPT) {
+        print_command(command);
+    }
 }
