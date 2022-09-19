@@ -326,7 +326,6 @@ bool _handle_prev_command(vector * args) {
             } else {
                 char * history_command = (char *)*vector_at(CMD_HIST, n);
                 _run_command(history_command);
-                _add_to_history(history_command);
             }
             return true;
         }
@@ -378,7 +377,6 @@ bool _handle_prefix(char * command) {
                 
                 if (!strcmp(prefix, prefix_compare)) {
                     _run_command(history_command);
-                    _add_to_history(history_command);
                     match = true;
                     break;
                 }
@@ -403,7 +401,6 @@ void _add_to_history(char * command) {
 }
 
 void _run_command(char * command) {
-    fprintf(stderr, "About to run: '%s'\n", command);
     char * newline = strchr(command, '\n');
     if (newline) {
         *newline = '\0';
