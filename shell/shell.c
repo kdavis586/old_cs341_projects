@@ -38,7 +38,7 @@ bool _handle_cd(char * command, vector * args);
 bool _handle_prefix(char * command);
 void _add_to_history(char * command);
 void _run_command(char * command);
-bool _run_external(char * command, vector * cmds);
+bool _run_external(char * command);
 vector * _get_commands(char ** command, char * separator);
 
 // Define process struct
@@ -407,7 +407,7 @@ void _add_to_history(char * command) {
 }
 
 // run command externally by forking, returns whether or not the command ran successfully
-bool _run_external(char * command, vector * cmds) {
+bool _run_external(char * command) {
     bool success = true;
     fflush(stdout);
     pid_t child;
@@ -428,7 +428,6 @@ bool _run_external(char * command, vector * cmds) {
             }
 
             char ** fake_argv = fake_argvc.we_wordv;
-            if (cmds) vector_destroy(cmds);
             _cleanup();
             execvp(fake_argv[0], fake_argv);
             wordfree(&fake_argvc);
@@ -460,11 +459,8 @@ void _run_command(char * command) {
     
     sstring * sstr_command = cstr_to_sstring(command);
     vector * args = sstring_split(sstr_command, ' '); // used for _run_builtin 
-    sstring_destroy(sstr_command);
 
     if(!_run_builtin(command, args)) {
-        vector_destroy(args);
-        args = NULL;
         // check for logical operators
         vector * commands = NULL;
         char * cmd1 = NULL;
@@ -473,26 +469,26 @@ void _run_command(char * command) {
             cmd1 = (char*)*vector_at(commands, 0);
             cmd2 = (char*)*vector_at(commands, 1);
 
-            if (_run_external(cmd1, commands)) {
-                _run_external(cmd2, commands);
+            if (_run_external(cmd1)) {
+                _run_external(cmd2);
             }
 
         } else if ((commands = _get_commands(&command, "||"))) {
             cmd1 = (char*)*vector_at(commands, 0);
             cmd2 = (char*)*vector_at(commands, 1);
 
-            if (!_run_external(cmd1, commands)) {
-                _run_external(cmd2, commands);
+            if (!_run_external(cmd1)) {
+                _run_external(cmd2);
             }
 
         } else if ((commands = _get_commands(&command, ";"))) {
             cmd1 = (char*)*vector_at(commands, 0);
             cmd2 = (char*)*vector_at(commands, 1);
 
-            _run_external(cmd1, commands);
-            _run_external(cmd2, commands);
+            _run_external(cmd1);
+            _run_external(cmd2);
         } else {
-            _run_external(command, NULL);
+            _run_external(command);
         }
 
         if (commands) vector_destroy(commands);
@@ -502,7 +498,8 @@ void _run_command(char * command) {
         print_command(command);
     }
 
-    if (args) vector_destroy(args);
+    sstring_destroy(sstr_command);
+    vector_destroy(args);
 }
 
 vector * _get_commands(char ** command, char * separator) {
