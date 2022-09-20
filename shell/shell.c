@@ -11,7 +11,10 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
+#include <wordexp.h>
 
 
 
@@ -33,6 +36,7 @@ bool _handle_cd(char * command, vector * args);
 bool _handle_prefix(char * command);
 void _add_to_history(char * command);
 void _run_command(char * command);
+void _run_external(char * command);
 
 // Define process struct
 typedef struct process {
@@ -243,9 +247,6 @@ bool _run_builtin(char * command, vector * args) {
     if (_handle_cd(command, args)) return true;
     if (_handle_prefix(command)) return true;
 
-    // TODO: Currently prints if command is not builtin, what if external command?
-    print_invalid_command(command); 
-    _add_to_history(command);
     return false;
 }
 
@@ -336,20 +337,22 @@ bool _handle_prev_command(vector * args) {
 
 // handles if user types cd <path>
 bool _handle_cd(char * command, vector * args) {
-    // TODO: change operation depending on '/' as first char or not
-    if (vector_size(args) == 2) {
+    if (vector_size(args) > 0) {
         char * cd = (char *)*vector_at(args, 0);
-        char * path = (char *)*vector_at(args, 1);
 
         if (strcmp(cd, "cd") == 0) {
-            if (chdir(path) == -1) {
-                // TODO: maybe only print if specifically invalid path errno is given
-                print_no_directory(path);
-            }
+            if (vector_size(args) == 1 || vector_size(args) >= 3) {
+                print_invalid_command(command);
+            } else {
+                char * path = (char *)*vector_at(args, 1);
+                if (chdir(path) == -1) {
+                    print_no_directory(path);
+                }
 
-            free(CWD);
-            CWD = NULL;
-            CWD = get_full_path(".");
+                free(CWD);
+                CWD = NULL;
+                CWD = get_full_path(".");
+            }
             _add_to_history(command); // adding input buffer because not segmented
             return true;
         }
@@ -400,6 +403,43 @@ void _add_to_history(char * command) {
     vector_push_back(CMD_HIST, command);
 }
 
+// run command externally by forking
+void _run_external(char * command) {
+    fflush(stdout);
+    pid_t child;
+    if ((child = fork()) == -1) {
+        print_fork_failed();
+        exit(1);
+    }
+    if (child != 0) {
+        print_command_executed(child);
+    }
+    
+    if (child == 0) {
+        // Child process
+        wordexp_t fake_argvc;
+        if (wordexp(command, &fake_argvc, 0) != 0) {
+            exit(1);
+        }
+
+        char ** fake_argv = fake_argvc.we_wordv;
+        execvp(fake_argv[0], fake_argv);
+        exit(1);
+    } else {
+        int status;
+        pid_t pid = waitpid(child, &status, 0);
+
+        if (pid == -1) {
+            print_wait_failed();
+        } else if (WIFSIGNALED(status) || (WIFEXITED(status) && WEXITSTATUS(status) != 0)) {
+            print_exec_failed(command);
+        }
+    }
+
+    vector_push_back(CMD_HIST, command);
+}
+
+// Run a general command.
 void _run_command(char * command) {
     char * newline = strchr(command, '\n');
     if (newline) {
@@ -408,7 +448,8 @@ void _run_command(char * command) {
     
     _split_input(command); // used for _run_builtin   
     if(!_run_builtin(command, CMD_ARGS)) {
-        // something
+        // not a builtin, try as external command
+        _run_external(command);
     }
 
     if (RUN_SCRIPT) {
