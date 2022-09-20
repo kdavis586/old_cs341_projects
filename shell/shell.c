@@ -5,6 +5,8 @@
 #include "format.h"
 #include "shell.h"
 #include "vector.h"
+#include "sstring.h"
+#include <ctype.h>
 #include <errno.h>
 #include <linux/limits.h>
 #include <signal.h>
@@ -36,7 +38,8 @@ bool _handle_cd(char * command, vector * args);
 bool _handle_prefix(char * command);
 void _add_to_history(char * command);
 void _run_command(char * command);
-void _run_external(char * command);
+bool _run_external(char * command);
+bool _get_commands(char ** command, char * separator, char ** cmd1, char ** cmd2);
 
 // Define process struct
 typedef struct process {
@@ -55,7 +58,6 @@ static FILE * HISTORY_FILE; // File for logging the history (if -h)
 static FILE * SCRIPT_FILE;  // File to run commands from (if -f)
 static FILE * INPUT_STREAM; // Used to store the stream to read commands from
 static ssize_t CHARS_READ;
-static vector * CMD_ARGS;
 
 /*
  *  MAIN SHELL FUNCTION
@@ -64,7 +66,6 @@ int shell(int argc, char *argv[]) {
     pid_t shell_pid;
     _shell_setup(&shell_pid, argc, argv);
 
-    CMD_ARGS = string_vector_create();
     while(true) {
         print_prompt(CWD, shell_pid);
         CHARS_READ = _get_input(&INPUT_BUFFER, &INPUT_SIZE);
@@ -105,7 +106,6 @@ void _shell_setup(pid_t * shell_pid, int argc, char * argv[]) {
     SCRIPT_FILE = NULL;
     INPUT_STREAM = stdin;
     CHARS_READ = -1;
-    CMD_ARGS = NULL;
     
     *shell_pid = getpid();
 
@@ -197,9 +197,6 @@ void _cleanup() {
 
     if (SCRIPT_FILE) fclose(SCRIPT_FILE);
     SCRIPT_FILE = NULL;
-
-    vector_destroy(CMD_ARGS);
-    CMD_ARGS = NULL;
 }
 
 // Validates that the options passed into argv are valid and expected
@@ -258,21 +255,21 @@ void _print_history() {
     }
 }
 
-// splits the input of the command by spaces and stores the values in CMD_ARGS
-void _split_input(char * command) {
-    vector_clear(CMD_ARGS);
-    char * command_copy = malloc(strlen(command) + 1);
-    strcpy(command_copy, command);
-    char * arg = strtok(command_copy, " ");
-    if (arg) {
-        vector_push_back(CMD_ARGS, arg);
-    }
+// // splits the input of the command by spaces and stores the values in CMD_ARGS
+// void _split_input(char * command) {
+//     vector_clear(CMD_ARGS);
+//     char * command_copy = malloc(strlen(command) + 1);
+//     strcpy(command_copy, command);
+//     char * arg = strtok(command_copy, " ");
+//     if (arg) {
+//         vector_push_back(CMD_ARGS, arg);
+//     }
 
-    while ((arg = strtok(NULL, " "))) {
-        vector_push_back(CMD_ARGS, arg);
-    }
-    free(command_copy);
-}
+//     while ((arg = strtok(NULL, " "))) {
+//         vector_push_back(CMD_ARGS, arg);
+//     }
+//     free(command_copy);
+// }
 
 // Record history (if specified), cleanup, and exit successfully from shell
 void _exit_success() {
@@ -409,40 +406,47 @@ void _add_to_history(char * command) {
     vector_push_back(CMD_HIST, command);
 }
 
-// run command externally by forking
-void _run_external(char * command) {
+// run command externally by forking, returns whether or not the command ran successfully
+bool _run_external(char * command) {
+    bool success = true;
     fflush(stdout);
     pid_t child;
+
     if ((child = fork()) == -1) {
         print_fork_failed();
-        exit(1);
-    }
-    if (child != 0) {
-        print_command_executed(child);
-    }
-    
-    if (child == 0) {
-        // Child process
-        wordexp_t fake_argvc;
-        if (wordexp(command, &fake_argvc, 0) != 0) {
-            exit(1);
-        }
-
-        char ** fake_argv = fake_argvc.we_wordv;
-        execvp(fake_argv[0], fake_argv);
-        exit(1);
+        success = false;
     } else {
-        int status;
-        pid_t pid = waitpid(child, &status, 0);
+        if (child != 0) {
+            print_command_executed(child);
+        }
+        
+        if (child == 0) {
+            // Child process
+            wordexp_t fake_argvc;
+            if (wordexp(command, &fake_argvc, 0) != 0) {
+                exit(1);
+            }
 
-        if (pid == -1) {
-            print_wait_failed();
-        } else if (WIFSIGNALED(status) || (WIFEXITED(status) && WEXITSTATUS(status) != 0)) {
-            print_exec_failed(command);
+            char ** fake_argv = fake_argvc.we_wordv;
+            _cleanup();
+            execvp(fake_argv[0], fake_argv);
+            exit(1);
+        } else {
+            int status;
+            pid_t pid = waitpid(child, &status, 0);
+
+            if (pid == -1) {
+                print_wait_failed();
+                success = false;
+            } else if (WIFSIGNALED(status) || (WIFEXITED(status) && WEXITSTATUS(status) != 0)) {
+                print_exec_failed(command);
+                success = false;
+            }
         }
     }
 
     vector_push_back(CMD_HIST, command);
+    return success;
 }
 
 // Run a general command.
@@ -452,13 +456,69 @@ void _run_command(char * command) {
         *newline = '\0';
     }
     
-    _split_input(command); // used for _run_builtin   
-    if(!_run_builtin(command, CMD_ARGS)) {
-        // not a builtin, try as external command
-        _run_external(command);
+    sstring * sstr_command = cstr_to_sstring(command);
+    vector * args = sstring_split(sstr_command, ' '); // used for _run_builtin 
+    sstring_destroy(sstr_command);  
+    if(!_run_builtin(command, args)) {
+        vector_destroy(args);
+        // check for logical operators
+        sstring * sstr_command = cstr_to_sstring(command);
+        vector * semi_list = sstring_split(sstr_command, ';');
+        sstring_destroy(sstr_command);
+
+        char * command1 = NULL;
+        char * command2 = NULL;
+        if (_get_commands(&command, "&&", &command1, &command2)) {
+            fprintf(stderr, "cmd2: %s\n", command2);
+            if (_run_external(command1)) {
+                _run_external(command2);
+            }
+
+            free(command1);
+            free(command2);
+        } else if (_get_commands(&command, "||", &command1, &command2)) {
+
+            if (!_run_external(command1)) {
+                _run_external(command2);
+            }
+
+            free(command1);
+            free(command2);
+        } else if (vector_size(semi_list) > 1) {
+            command1 = (char *)*vector_at(semi_list, 0);
+            command2 = (char *)*vector_at(semi_list, 1);
+
+            _run_external(command1);
+            _run_external(command2);
+            vector_destroy(semi_list);
+        } else {
+            fprintf(stderr, "command to be run: %s\n", command);
+            _run_external(command);
+        }
     }
 
     if (RUN_SCRIPT) {
         print_command(command);
     }
+}
+
+bool _get_commands(char ** command, char * separator, char ** cmd1, char ** cmd2) {
+    char * sep_position = strstr(*command, separator);
+
+    if (!sep_position) {
+        return false;
+    }
+
+    size_t cmd1_len = sep_position - *command;
+    size_t cmd2_len = (*command + strlen(*command)) - (sep_position + strlen(separator));
+    fprintf(stderr, "cmd2_len: %zu\n", cmd2_len);
+    *cmd1 = malloc(cmd1_len);
+    *cmd2 = malloc(cmd2_len);
+    strncpy(*cmd1, *command, cmd1_len);
+    *cmd1[cmd1_len] = '\0';
+    char * cmd2_start = sep_position + strlen(separator);
+    while (isspace(*cmd2_start)) cmd2_start++;
+    strncpy(*cmd2, cmd2_start, cmd2_len);
+    *cmd2[cmd2_len] = '\0';
+    return true;
 }
