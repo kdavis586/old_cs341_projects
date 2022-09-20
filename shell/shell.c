@@ -39,7 +39,7 @@ bool _handle_prefix(char * command);
 void _add_to_history(char * command);
 void _run_command(char * command);
 bool _run_external(char * command);
-bool _get_commands(char ** command, char * separator, char ** cmd1, char ** cmd2);
+vector * _get_commands(char ** command, char * separator);
 
 // Define process struct
 typedef struct process {
@@ -458,67 +458,80 @@ void _run_command(char * command) {
     
     sstring * sstr_command = cstr_to_sstring(command);
     vector * args = sstring_split(sstr_command, ' '); // used for _run_builtin 
-    sstring_destroy(sstr_command);  
+    sstring_destroy(sstr_command);
+
     if(!_run_builtin(command, args)) {
-        vector_destroy(args);
         // check for logical operators
         sstring * sstr_command = cstr_to_sstring(command);
         vector * semi_list = sstring_split(sstr_command, ';');
         sstring_destroy(sstr_command);
 
-        char * command1 = NULL;
-        char * command2 = NULL;
-        if (_get_commands(&command, "&&", &command1, &command2)) {
-            fprintf(stderr, "cmd2: %s\n", command2);
-            if (_run_external(command1)) {
-                _run_external(command2);
+        vector * commands = NULL;
+        char * cmd1 = NULL;
+        char * cmd2 = NULL;
+        if ((commands = _get_commands(&command, "&&"))) {
+            cmd1 = (char*)*vector_at(commands, 0);
+            cmd2 = (char*)*vector_at(commands, 1);
+
+            if (_run_external(cmd1)) {
+                _run_external(cmd2);
             }
 
-            free(command1);
-            free(command2);
-        } else if (_get_commands(&command, "||", &command1, &command2)) {
+        } else if ((commands = _get_commands(&command, "||"))) {
+            cmd1 = (char*)*vector_at(commands, 0);
+            cmd2 = (char*)*vector_at(commands, 1);
 
-            if (!_run_external(command1)) {
-                _run_external(command2);
+            if (!_run_external(cmd1)) {
+                _run_external(cmd2);
             }
 
-            free(command1);
-            free(command2);
         } else if (vector_size(semi_list) > 1) {
-            command1 = (char *)*vector_at(semi_list, 0);
-            command2 = (char *)*vector_at(semi_list, 1);
+            cmd1 = (char *)*vector_at(semi_list, 0);
+            cmd2 = (char *)*vector_at(semi_list, 1);
 
-            _run_external(command1);
-            _run_external(command2);
-            vector_destroy(semi_list);
+            _run_external(cmd1);
+            _run_external(cmd2);
         } else {
             fprintf(stderr, "command to be run: %s\n", command);
             _run_external(command);
         }
+
+        vector_destroy(commands);
+        vector_destroy(semi_list);
     }
 
     if (RUN_SCRIPT) {
         print_command(command);
     }
+
+    vector_destroy(args);
 }
 
-bool _get_commands(char ** command, char * separator, char ** cmd1, char ** cmd2) {
+vector * _get_commands(char ** command, char * separator) {
     char * sep_position = strstr(*command, separator);
 
     if (!sep_position) {
-        return false;
+        return NULL;
     }
+
+    vector * commands = string_vector_create();
 
     size_t cmd1_len = sep_position - *command;
     size_t cmd2_len = (*command + strlen(*command)) - (sep_position + strlen(separator));
+    fprintf(stderr, "cmd1_len: %zu\n", cmd1_len);
     fprintf(stderr, "cmd2_len: %zu\n", cmd2_len);
-    *cmd1 = malloc(cmd1_len);
-    *cmd2 = malloc(cmd2_len);
-    strncpy(*cmd1, *command, cmd1_len);
-    *cmd1[cmd1_len] = '\0';
+    char * cmd1 = malloc(cmd1_len + 1);
+    char * cmd2 = malloc(cmd2_len + 1);
+    strncpy(cmd1, *command, cmd1_len);
+    cmd1[cmd1_len] = '\0';
     char * cmd2_start = sep_position + strlen(separator);
     while (isspace(*cmd2_start)) cmd2_start++;
-    strncpy(*cmd2, cmd2_start, cmd2_len);
-    *cmd2[cmd2_len] = '\0';
-    return true;
+    strncpy(cmd2, cmd2_start, cmd2_len);
+    cmd2[cmd2_len] = '\0';
+    
+    vector_push_back(commands, cmd1);
+    vector_push_back(commands, cmd2);
+    free(cmd1);
+    free(cmd2);
+    return commands;
 }
