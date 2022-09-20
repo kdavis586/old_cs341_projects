@@ -251,7 +251,9 @@ void _print_history() {
     size_t i;
     for (i = 0; i < vector_size(CMD_HIST); i++) {
         char * command = (char *)*vector_at(CMD_HIST, i);
+        command[strlen(command) - 1] = '\0';
         print_history_line(i, command);
+        command[strlen(command)] = '\n';
     }
 }
 
@@ -261,11 +263,6 @@ void _exit_success() {
     if (RECORD_HIST) {
         for (i = 0; i < vector_size(CMD_HIST); i++) {
             char * command = (char *)*vector_at(CMD_HIST, i);
-            // char * newline = strchr(command, '\n');
-            // if (!newline) {
-            //     command[strlen(command)] = '\n';
-            // }
-
             fputs(command, HISTORY_FILE);
         }
     }
@@ -348,9 +345,9 @@ bool _handle_cd(char * command, vector * args) {
 
 // hanldes if user types !<prefix>
 bool _handle_prefix(char * command) {
-    char prefix[strlen(command)];
-
-    if (sscanf(command, "!%s", prefix) == 1) {
+    if (*command == '!') {
+        char * prefix = malloc(strlen(command));
+        strcpy(prefix, command+1);
         size_t prefix_len = strlen(prefix);
         char * prefix_compare = malloc(sizeof(prefix));
         size_t i;
@@ -375,6 +372,7 @@ bool _handle_prefix(char * command) {
         // no matches
         if (!match) print_no_history_match();
         free(prefix_compare);
+        free(prefix);
         return true;
     }
     
@@ -383,10 +381,7 @@ bool _handle_prefix(char * command) {
 
 // Adds command to history with a newline character
 void _add_to_history(char * command) {
-    if (command[CHARS_READ] == '\0') {
-        command[CHARS_READ] = '\n';
-    }
-    //CHARS_READ = -1;
+    command[strlen(command)] = '\n';
     vector_push_back(CMD_HIST, command);
 }
 
@@ -430,7 +425,6 @@ bool _run_external(char * command) {
         }
     }
 
-    vector_push_back(CMD_HIST, command);
     return success;
 }
 
@@ -476,6 +470,7 @@ void _run_command(char * command) {
         }
 
         if (commands) vector_destroy(commands);
+        _add_to_history(command);
     }
 
     if (RUN_SCRIPT) {
