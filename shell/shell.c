@@ -38,7 +38,7 @@ bool _handle_cd(char * command, vector * args);
 bool _handle_prefix(char * command);
 void _add_to_history(char * command);
 void _run_command(char * command);
-bool _run_external(char * command);
+bool _run_external(char * command, vector * cmds);
 vector * _get_commands(char ** command, char * separator);
 
 // Define process struct
@@ -407,7 +407,7 @@ void _add_to_history(char * command) {
 }
 
 // run command externally by forking, returns whether or not the command ran successfully
-bool _run_external(char * command) {
+bool _run_external(char * command, vector * cmds) {
     bool success = true;
     fflush(stdout);
     pid_t child;
@@ -428,8 +428,10 @@ bool _run_external(char * command) {
             }
 
             char ** fake_argv = fake_argvc.we_wordv;
+            if (cmds) vector_destroy(cmds);
             _cleanup();
             execvp(fake_argv[0], fake_argv);
+            wordfree(&fake_argvc);
             exit(1);
         } else {
             int status;
@@ -461,11 +463,9 @@ void _run_command(char * command) {
     sstring_destroy(sstr_command);
 
     if(!_run_builtin(command, args)) {
+        vector_destroy(args);
+        args = NULL;
         // check for logical operators
-        sstring * sstr_command = cstr_to_sstring(command);
-        vector * semi_list = sstring_split(sstr_command, ';');
-        sstring_destroy(sstr_command);
-
         vector * commands = NULL;
         char * cmd1 = NULL;
         char * cmd2 = NULL;
@@ -473,38 +473,36 @@ void _run_command(char * command) {
             cmd1 = (char*)*vector_at(commands, 0);
             cmd2 = (char*)*vector_at(commands, 1);
 
-            if (_run_external(cmd1)) {
-                _run_external(cmd2);
+            if (_run_external(cmd1, commands)) {
+                _run_external(cmd2, commands);
             }
 
         } else if ((commands = _get_commands(&command, "||"))) {
             cmd1 = (char*)*vector_at(commands, 0);
             cmd2 = (char*)*vector_at(commands, 1);
 
-            if (!_run_external(cmd1)) {
-                _run_external(cmd2);
+            if (!_run_external(cmd1, commands)) {
+                _run_external(cmd2, commands);
             }
 
-        } else if (vector_size(semi_list) > 1) {
-            cmd1 = (char *)*vector_at(semi_list, 0);
-            cmd2 = (char *)*vector_at(semi_list, 1);
+        } else if ((commands = _get_commands(&command, ";"))) {
+            cmd1 = (char*)*vector_at(commands, 0);
+            cmd2 = (char*)*vector_at(commands, 1);
 
-            _run_external(cmd1);
-            _run_external(cmd2);
+            _run_external(cmd1, commands);
+            _run_external(cmd2, commands);
         } else {
-            fprintf(stderr, "command to be run: %s\n", command);
-            _run_external(command);
+            _run_external(command, NULL);
         }
 
-        vector_destroy(commands);
-        vector_destroy(semi_list);
+        if (commands) vector_destroy(commands);
     }
 
     if (RUN_SCRIPT) {
         print_command(command);
     }
 
-    vector_destroy(args);
+    if (args) vector_destroy(args);
 }
 
 vector * _get_commands(char ** command, char * separator) {
@@ -518,8 +516,6 @@ vector * _get_commands(char ** command, char * separator) {
 
     size_t cmd1_len = sep_position - *command;
     size_t cmd2_len = (*command + strlen(*command)) - (sep_position + strlen(separator));
-    fprintf(stderr, "cmd1_len: %zu\n", cmd1_len);
-    fprintf(stderr, "cmd2_len: %zu\n", cmd2_len);
     char * cmd1 = malloc(cmd1_len + 1);
     char * cmd2 = malloc(cmd2_len + 1);
     strncpy(cmd1, *command, cmd1_len);
