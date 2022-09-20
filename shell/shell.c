@@ -30,7 +30,7 @@ void _split_input(char * command);
 void _handle_get_input(ssize_t chars);
 void _exit_success();
 void _handle_exit();
-bool _handle_history(vector * args);
+bool _handle_history(char * command, vector * args);
 bool _handle_prev_command(vector * args);
 bool _handle_cd(char * command, vector * args);
 bool _handle_prefix(char * command);
@@ -242,7 +242,7 @@ bool _validate_options(int argc, char * argv[], char ** hist_path, char ** scrip
 // returns whether or not a builtin function ran
 bool _run_builtin(char * command, vector * args) {  
     if (vector_size(args) == 0) return false;
-    if (_handle_history(args)) return true;
+    if (_handle_history(command, args)) return true;
     if (_handle_prev_command(args)) return true;
     if (_handle_cd(command, args)) return true;
     if (_handle_prefix(command)) return true;
@@ -304,11 +304,15 @@ void _handle_exit() {
 }
 
 // handles if user types "!history"
-bool _handle_history(vector * args) {
-    if (vector_size(args) == 1) {
-        char * command = (char *)*vector_at(args, 0);
-        if (strcmp(command, "!history") == 0) {
-            _print_history();
+bool _handle_history(char * command, vector * args) {
+    if (vector_size(args) > 0) {
+        char * first_val = (char *)*vector_at(args, 0);
+        if (strcmp(first_val, "!history") == 0) {
+            if (vector_size(args) > 1) {
+                print_invalid_command(command);
+            } else {
+                _print_history();
+            }
             return true;
         }
     }
