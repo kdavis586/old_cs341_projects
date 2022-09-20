@@ -298,19 +298,34 @@ bool _handle_history(char * command, vector * args) {
 // handles if user types #<n>
 bool _handle_prev_command(char * command, vector * args) {
     if (vector_size(args) > 0) {
-        int n;
-        char * first_val = (char *)*vector_at(args, 0);
-        if (sscanf(first_val, "#%d", &n) == 1) {
+        if (*command == '#') {
             if (vector_size(args) > 1) {
                 print_invalid_command(command);
-            } else {
-                if (n < 0 || (size_t) n >= vector_size(CMD_HIST)) {
-                    print_invalid_index();
-                } else {
-                    char * history_command = (char *)*vector_at(CMD_HIST, n);
-                    _run_command(history_command);
-                }
+                return true;
             }
+
+            char * number = malloc(sizeof(command));
+            strcpy(number, command + 1);
+            char * itr = number;
+            while(*itr) {
+                if (!isdigit(*itr)) {
+                    print_invalid_command(command);
+                    free(number);
+                    return true;
+                }
+
+                itr++;
+            }
+
+            int n = atoi(number);
+            free(number);
+            if (n < 0 || (size_t) n >= vector_size(CMD_HIST)) {
+                print_invalid_index();
+            } else {
+                char * history_command = (char *)*vector_at(CMD_HIST, n);
+                _run_command(history_command);
+            }
+            
             return true;
         }
     }
