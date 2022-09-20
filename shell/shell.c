@@ -31,7 +31,7 @@ void _handle_get_input(ssize_t chars);
 void _exit_success();
 void _handle_exit();
 bool _handle_history(char * command, vector * args);
-bool _handle_prev_command(vector * args);
+bool _handle_prev_command(char * command, vector * args);
 bool _handle_cd(char * command, vector * args);
 bool _handle_prefix(char * command);
 void _add_to_history(char * command);
@@ -243,7 +243,7 @@ bool _validate_options(int argc, char * argv[], char ** hist_path, char ** scrip
 bool _run_builtin(char * command, vector * args) {  
     if (vector_size(args) == 0) return false;
     if (_handle_history(command, args)) return true;
-    if (_handle_prev_command(args)) return true;
+    if (_handle_prev_command(command, args)) return true;
     if (_handle_cd(command, args)) return true;
     if (_handle_prefix(command)) return true;
 
@@ -254,10 +254,7 @@ void _print_history() {
     size_t i;
     for (i = 0; i < vector_size(CMD_HIST); i++) {
         char * command = (char *)*vector_at(CMD_HIST, i);
-        size_t command_len = strlen(command);
-        command[command_len] = '\0';
-        print_history_line(i, (char *)*vector_at(CMD_HIST, i));
-        command[command_len] = '\n';
+        print_history_line(i, command);
     }
 }
 
@@ -321,16 +318,20 @@ bool _handle_history(char * command, vector * args) {
 }
 
 // handles if user types #<n>
-bool _handle_prev_command(vector * args) {
-    if (vector_size(args) == 1) {
+bool _handle_prev_command(char * command, vector * args) {
+    if (vector_size(args) > 0) {
         int n;
-        char * command = (char *)*vector_at(args, 0);
-        if (sscanf(command, "#%d", &n) == 1) {
-            if (n < 0 || (size_t) n >= vector_size(CMD_HIST)) {
-                print_invalid_index();
+        char * first_val = (char *)*vector_at(args, 0);
+        if (sscanf(first_val, "#%d", &n) == 1) {
+            if (vector_size(args) > 1) {
+                print_invalid_command(command);
             } else {
-                char * history_command = (char *)*vector_at(CMD_HIST, n);
-                _run_command(history_command);
+                if (n < 0 || (size_t) n >= vector_size(CMD_HIST)) {
+                    print_invalid_index();
+                } else {
+                    char * history_command = (char *)*vector_at(CMD_HIST, n);
+                    _run_command(history_command);
+                }
             }
             return true;
         }
@@ -404,6 +405,7 @@ void _add_to_history(char * command) {
     if (command[CHARS_READ] == '\0') {
         command[CHARS_READ] = '\n';
     }
+    //CHARS_READ = -1;
     vector_push_back(CMD_HIST, command);
 }
 
