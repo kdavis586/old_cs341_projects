@@ -28,7 +28,6 @@ bool _parse_arguments(int argc, char * argv[]);
 bool _validate_options(int argc, char * argv[], char ** hist_path, char ** script_path);
 bool _run_builtin(char * command, vector * args);
 void _print_history();
-void _split_input(char * command);
 void _handle_get_input(ssize_t chars);
 void _exit_success();
 void _handle_exit();
@@ -40,6 +39,7 @@ void _add_to_history(char * command);
 void _run_command(char * command);
 bool _run_external(char * command);
 vector * _get_commands(char ** command, char * separator);
+void _kill_foreground();
 
 // Define process struct
 typedef struct process {
@@ -117,7 +117,7 @@ void _shell_setup(pid_t * shell_pid, int argc, char * argv[]) {
         INPUT_STREAM = SCRIPT_FILE;
     }
 
-    signal(SIGINT, SIG_IGN); // TODO: Redirect SIGINT (Ctrl + C) to kill the currently running foreground process
+    signal(SIGINT, _kill_foreground); // TODO: Redirect SIGINT (Ctrl + C) to kill the currently running foreground process
 }
 
 // Parses arguments passed with starting the shell,
@@ -254,22 +254,6 @@ void _print_history() {
         print_history_line(i, command);
     }
 }
-
-// // splits the input of the command by spaces and stores the values in CMD_ARGS
-// void _split_input(char * command) {
-//     vector_clear(CMD_ARGS);
-//     char * command_copy = malloc(strlen(command) + 1);
-//     strcpy(command_copy, command);
-//     char * arg = strtok(command_copy, " ");
-//     if (arg) {
-//         vector_push_back(CMD_ARGS, arg);
-//     }
-
-//     while ((arg = strtok(NULL, " "))) {
-//         vector_push_back(CMD_ARGS, arg);
-//     }
-//     free(command_copy);
-// }
 
 // Record history (if specified), cleanup, and exit successfully from shell
 void _exit_success() {
@@ -439,7 +423,7 @@ bool _run_external(char * command) {
             if (pid == -1) {
                 print_wait_failed();
                 success = false;
-            } else if (WIFSIGNALED(status) || (WIFEXITED(status) && WEXITSTATUS(status) != 0)) {
+            } else if ((WIFSIGNALED(status) && WTERMSIG(status) != SIGINT)|| (WIFEXITED(status) && WEXITSTATUS(status) != 0)) {
                 print_exec_failed(command);
                 success = false;
             }
@@ -527,4 +511,8 @@ vector * _get_commands(char ** command, char * separator) {
     free(cmd1);
     free(cmd2);
     return commands;
+}
+
+void _kill_foreground() {
+    
 }
