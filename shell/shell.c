@@ -380,7 +380,13 @@ bool _handle_prefix(char * command) {
                 prefix_compare[prefix_len] = '\0';
                 
                 if (!strcmp(prefix, prefix_compare)) {
+                    char * newline = strchr(history_command, '\n');
+                    if (newline) {
+                        *newline = '\0';
+                    }
+                    print_command(history_command);
                     _run_command(history_command);
+                    *newline = '\n';
                     match = true;
                     break;
                 }
