@@ -74,9 +74,6 @@ int shell(int argc, char *argv[]) {
         // chars guarenteed to be >= 0
         if (CHARS_READ > 0) {
             // Format for running command
-            if (INPUT_BUFFER[CHARS_READ - 1] == '\n') {
-                INPUT_BUFFER[CHARS_READ - 1] = '\0';
-            }
             _handle_exit();
             _run_command(INPUT_BUFFER);
         }
@@ -117,7 +114,7 @@ void _shell_setup(pid_t * shell_pid, int argc, char * argv[]) {
         INPUT_STREAM = SCRIPT_FILE;
     }
 
-    signal(SIGINT, _kill_foreground); // TODO: Redirect SIGINT (Ctrl + C) to kill the currently running foreground process
+    signal(SIGINT, _kill_foreground);
 }
 
 // Parses arguments passed with starting the shell,
@@ -273,7 +270,7 @@ void _exit_success() {
 
 // If user types "exit" exit successfully
 void _handle_exit() {
-    if (strcmp(INPUT_BUFFER, "exit") == 0) {
+    if (strcmp(INPUT_BUFFER, "exit\n") == 0) {
         _exit_success();
     }
 }
@@ -317,13 +314,19 @@ bool _handle_prev_command(char * command, vector * args) {
                 itr++;
             }
 
-            int n = atoi(number);
+            int n = atoi(number); // TODO: accepts "01" as 1, maybe bad...
             free(number);
             if (n < 0 || (size_t) n >= vector_size(CMD_HIST)) {
                 print_invalid_index();
             } else {
                 char * history_command = (char *)*vector_at(CMD_HIST, n);
+                char * newline = strchr(history_command, '\n');
+                if (newline) {
+                    *newline = '\0';
+                }
+                print_command(history_command);
                 _run_command(history_command);
+                *newline = '\n';
             }
             
             return true;
