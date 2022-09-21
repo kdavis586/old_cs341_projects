@@ -13,6 +13,10 @@ int main() {
     void *p3 = malloc(50); 
     p2 = realloc(p2, 10);  
     p1 = realloc(p1, 100);
+    void *temp = realloc(p1, 1000000000000000);
+    if (temp) {
+        p1 = temp;
+    }
     free(p2); // should free 10
     free(p1); // should free 100
     p3 = realloc(p3, 0); //should free 50

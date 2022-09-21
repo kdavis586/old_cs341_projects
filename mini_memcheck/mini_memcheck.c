@@ -69,7 +69,7 @@ void *mini_realloc(void *payload, size_t request_size, const char *filename,
     meta_data * temp = (meta_data *) realloc(mta_data, sizeof(meta_data) + request_size);
     if (!temp) {
         // realloc failed, mta_data->request_size didnt get changed
-        total_memory_requested -= mta_data->request_size;
+        total_memory_requested += mta_data->request_size;
         return NULL;
     }
 
