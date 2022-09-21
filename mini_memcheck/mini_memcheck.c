@@ -7,48 +7,49 @@
 #include <stdio.h>
 #include <string.h>
 
-meta_data * head;
-size_t total_memory_requested;
-size_t total_memory_freed;
-size_t invalid_addresses;
+meta_data * head = NULL;
+size_t total_memory_requested = 0;
+size_t total_memory_freed = 0;
+size_t invalid_addresses = 0;
 
-bool _check_valid_address(void *payload);
+bool _check_valid_address(const void *payload);
 
 void *mini_malloc(size_t request_size, const char *filename,
                   void *instruction) {
-    void * node = malloc(sizeof(meta_data) + request_size);
+    meta_data * node = malloc(sizeof(meta_data) + request_size);
     if (!node) {
         return NULL;
     }
 
     total_memory_requested += request_size;
-    ((meta_data *) node)->request_size = request_size;
-    ((meta_data *) node)->filename = filename;
-    ((meta_data *) node)->instruction = instruction;
-    ((meta_data *) node)->next = head;
+    node->request_size = request_size;
+    node->filename = filename;
+    node->instruction = instruction;
+    node->next = head;
 
     head = node;
-    return (node + sizeof(meta_data));
+
+    return ((void *)node + sizeof(meta_data));
 }
 
 void *mini_calloc(size_t num_elements, size_t element_size,
                   const char *filename, void *instruction) {
     size_t amount_requested = (num_elements * element_size);
-    void * node = malloc(sizeof(meta_data) + amount_requested);
+    meta_data * node = malloc(sizeof(meta_data) + amount_requested);
     if (!node) {
         return NULL;
     }
 
     total_memory_requested += amount_requested;
-    ((meta_data *) node)->request_size = amount_requested;
-    ((meta_data *) node)->filename = filename;
-    ((meta_data *) node)->instruction = instruction;
-    ((meta_data *) node)->next = head;
+    node->request_size = amount_requested;
+    node->filename = filename;
+    node->instruction = instruction;
+    node->next = head;
 
-    memset(node + sizeof(meta_data), 0, amount_requested);
+    memset((void *)node + sizeof(meta_data), 0, amount_requested);
 
     head = node;
-    return (node + sizeof(meta_data));
+    return ((void *)node + sizeof(meta_data));
 }
 
 void *mini_realloc(void *payload, size_t request_size, const char *filename,
@@ -56,18 +57,22 @@ void *mini_realloc(void *payload, size_t request_size, const char *filename,
     if (!_check_valid_address(payload)) {
         invalid_addresses++;
         return NULL;
+    } else if (!payload) {
+        return mini_malloc(request_size, filename, instruction);
     } else if (!request_size) {
         mini_free(payload);
         return NULL;
-    }
+    } 
 
-    void * mta_data = payload - sizeof(meta_data);
-    void * temp = realloc(mta_data, sizeof(meta_data) + request_size);
+    meta_data * mta_data = payload - sizeof(meta_data);
+    total_memory_requested -= mta_data->request_size;
+    meta_data * temp = (meta_data *) realloc(mta_data, sizeof(meta_data) + request_size);
     if (!temp) {
+        // realloc failed, mta_data->request_size didnt get changed
+        total_memory_requested -= mta_data->request_size;
         return NULL;
     }
 
-    total_memory_requested -= ((meta_data *) mta_data)->request_size;
     total_memory_requested += request_size;
 
     if (mta_data != temp) {
@@ -76,6 +81,7 @@ void *mini_realloc(void *payload, size_t request_size, const char *filename,
         while (start) {
             if (start->next == mta_data) {
                 start->next = temp;
+                temp->next = mta_data->next;
                 break;
             }
 
@@ -87,12 +93,12 @@ void *mini_realloc(void *payload, size_t request_size, const char *filename,
     
     mta_data = temp;
     temp = NULL;
-    ((meta_data *) mta_data)->request_size = request_size;
-    ((meta_data *) mta_data)->filename = filename;
-    ((meta_data *) mta_data)->instruction = instruction;
+    mta_data->request_size = request_size;
+    mta_data->filename = filename;
+    mta_data->instruction = instruction;
     // no need to edit this nodes place in the linked list
 
-    return mta_data + sizeof(meta_data);
+    return (void *)mta_data + sizeof(meta_data);
 }
 
 void mini_free(void *payload) {
@@ -130,7 +136,7 @@ void mini_free(void *payload) {
 }
 
 // Checks to see if the input payload is a valid address to free in the linked list
-bool _check_valid_address(void *payload) {
+bool _check_valid_address(const void *payload) {
     if (!payload) {
         // NULL is always a valid address to realloc or free
         return true;
