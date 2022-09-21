@@ -65,15 +65,18 @@ void *mini_realloc(void *payload, size_t request_size, const char *filename,
     } 
 
     meta_data * mta_data = payload - sizeof(meta_data);
-    total_memory_requested -= mta_data->request_size;
+    size_t cur_size = mta_data->request_size;
     meta_data * temp = (meta_data *) realloc(mta_data, sizeof(meta_data) + request_size);
     if (!temp) {
         // realloc failed, mta_data->request_size didnt get changed
-        total_memory_requested += mta_data->request_size;
         return NULL;
     }
 
-    total_memory_requested += request_size;
+    if (request_size > cur_size) {
+        total_memory_requested += (request_size - cur_size);
+    } else if (cur_size > request_size) {
+        total_memory_freed += (cur_size - request_size);
+    }
 
     if (mta_data != temp) {
         // Memory was moved, restore the link
