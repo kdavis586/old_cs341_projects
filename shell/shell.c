@@ -42,7 +42,7 @@ bool _handle_prefix(char * command);
 bool _handle_ps(char * command, vector * args);
 void _add_to_history(char * command);
 void _run_command(char * command);
-bool _run_external(char * command);
+bool _run_external(char * command, bool print_cmd);
 vector * _get_commands(char ** command, char * separator);
 void _kill_foreground();
 void _create_process(pid_t pid, char * command, bool background);
@@ -55,6 +55,7 @@ void _free_process_info(process_info * pinfo);
 char * _get_proc_pid_path(process * prcss);
 char * _create_run_time_string(unsigned long utime, unsigned long stime);
 char * _create_start_time_string(unsigned long long start_time);
+void _handle_output_funct(char * input_command, char * file_path);
 
 // Globals that will be used for the duration of the shell
 static char * CWD; // Current working directory
@@ -421,13 +422,6 @@ bool _handle_prefix(char * command) {
 
 // handles ps
 bool _handle_ps(char * command, vector * args) {
-    
-
-    // TODO: remove
-    size_t i;
-    for (i = 0; i < vector_size(PROCESSES); i++) {
-        process * prcss = vector_get(PROCESSES, i);
-    }
     if (vector_size(args) > 0) {
         char * ps = vector_get(args, 0);
 
@@ -452,7 +446,7 @@ void _add_to_history(char * command) {
 }
 
 // run command externally by forking, returns whether or not the command ran successfully
-bool _run_external(char * command) {
+bool _run_external(char * command, bool print_cmd) {
     bool success = true;
     fflush(stdout);
     pid_t child;
@@ -461,8 +455,8 @@ bool _run_external(char * command) {
         print_fork_failed();
         success = false;
     } else {
-        if (child != 0) {
-            print_command_executed(child);
+        if (child != 0 && print_cmd) {
+            print_command_executed(child);  
         }
         
         bool background = _is_background_command(command);
@@ -531,26 +525,36 @@ void _run_command(char * command) {
             cmd1 = (char*)*vector_at(commands, 0);
             cmd2 = (char*)*vector_at(commands, 1);
 
-            if (_run_external(cmd1)) {
-                _run_external(cmd2);
+            if (_run_external(cmd1, true)) {
+                _run_external(cmd2, true);
             }
 
         } else if ((commands = _get_commands(&command, "||"))) {
             cmd1 = (char*)*vector_at(commands, 0);
             cmd2 = (char*)*vector_at(commands, 1);
 
-            if (!_run_external(cmd1)) {
-                _run_external(cmd2);
+            if (!_run_external(cmd1, true)) {
+                _run_external(cmd2, true);
             }
 
         } else if ((commands = _get_commands(&command, ";"))) {
             cmd1 = (char*)*vector_at(commands, 0);
             cmd2 = (char*)*vector_at(commands, 1);
 
-            _run_external(cmd1);
-            _run_external(cmd2);
-        } else {
-            _run_external(command);
+            _run_external(cmd1, true);
+            _run_external(cmd2, true);
+        } else if ((commands = _get_commands(&command, ">"))) {
+            char * input_command = vector_get(commands, 0);
+            char * file_path = vector_get(commands, 1);
+
+            _handle_output_funct(input_command, file_path);
+            _add_to_history(command);
+        }
+        
+        
+        // TODO: Reconnect this
+        else {
+            _run_external(command, true);
         }
 
         if (commands) vector_destroy(commands);
@@ -565,6 +569,7 @@ void _run_command(char * command) {
     vector_destroy(args);  
 }
 
+// essentially splits input command on separator once, then returns results inside vector
 vector * _get_commands(char ** command, char * separator) {
     char * sep_position = strstr(*command, separator);
 
@@ -667,7 +672,11 @@ void _populate_process_info(process_info * pinfo, process * prcss) {
     char * pid_path = _get_proc_pid_path(prcss);
 
     // Open proc for reading and free the path char *
-    FILE * fd = fopen(pid_path, "r");
+    FILE * fd;
+    if (!(fd = fopen(pid_path, "r"))) {
+        // should never go here
+        exit(2);
+    }
     free(pid_path);
 
     // Setup needed variables for value storage
@@ -761,7 +770,11 @@ char * _create_start_time_string(unsigned long long start_time) {
     start_time /= sysconf(_SC_CLK_TCK); // now in seconds
 
     // Get system uptime
-    FILE * fd = fopen("/proc/uptime", "r");
+    FILE * fd;
+    if (!(fd = fopen("/proc/uptime", "r"))) {
+        // should never go here
+        exit(2);
+    }
     unsigned long long uptime;
     fscanf(fd, "%llu %*llu", &uptime);
     fclose(fd);
@@ -784,4 +797,22 @@ char * _create_start_time_string(unsigned long long start_time) {
     }
 
     return start_str;
+}
+
+void _handle_output_funct(char * input_command, char * file_path) {
+    // concept -> redirect stdout to file descriptor, then revert it
+    print_command(input_command);
+    int stdout_fd = dup(1);
+    close(1);
+
+    FILE * fd;
+    if (!(fd = fopen(file_path, "w"))) {
+        // should not go here
+        fprintf(stderr, "here");
+        exit(2);
+    }
+
+    _run_external(input_command, false);
+    fclose(fd);
+    dup2(stdout_fd, 1);
 }
