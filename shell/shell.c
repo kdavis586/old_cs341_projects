@@ -55,7 +55,8 @@ void _free_process_info(process_info * pinfo);
 char * _get_proc_pid_path(process * prcss);
 char * _create_run_time_string(unsigned long utime, unsigned long stime);
 char * _create_start_time_string(unsigned long long start_time);
-void _handle_output_funct(char * input_command, char * file_path, bool append);
+void _handle_output_append_funct(char * input_command, char * file_path, bool append);
+void _handle_input_funct(char * input_command, char * file_path);
 
 // Globals that will be used for the duration of the shell
 static char * CWD; // Current working directory
@@ -70,6 +71,7 @@ static FILE * INPUT_STREAM; // Used to store the stream to read commands from
 static ssize_t CHARS_READ;
 static vector * PROCESSES;
 static int SET_STDOUT = -1;
+static int SET_STDIN = -1;
 
 /*
  *  MAIN SHELL FUNCTION
@@ -561,19 +563,21 @@ void _run_command(char * command) {
             char * input_command = vector_get(commands, 0);
             char * file_path = vector_get(commands, 1);
 
-            _handle_output_funct(input_command, file_path, true);
+            _handle_output_append_funct(input_command, file_path, true);
             _add_to_history(command);
         } else if ((commands = _get_commands(&command, ">"))) {
             char * input_command = vector_get(commands, 0);
             char * file_path = vector_get(commands, 1);
 
-            _handle_output_funct(input_command, file_path, false);
+            _handle_output_append_funct(input_command, file_path, false);
             _add_to_history(command);
-        }
-        
-        
-        // TODO: Reconnect this
-        else {
+        } else if ((commands = _get_commands(&command, "<"))) {
+            char * input_command = vector_get(commands, 0);
+            char * file_path = vector_get(commands, 1);
+
+            _handle_input_funct(input_command, file_path);
+            _add_to_history(command);
+        } else {
             _run_external(command);
         }
 
@@ -819,7 +823,7 @@ char * _create_start_time_string(unsigned long long start_time) {
     return start_str;
 }
 
-void _handle_output_funct(char * input_command, char * file_path, bool append) {
+void _handle_output_append_funct(char * input_command, char * file_path, bool append) {
     // concept -> redirect stdout to file descriptor, then revert it
     SET_STDOUT = dup(1);
     close(1);
@@ -835,4 +839,20 @@ void _handle_output_funct(char * input_command, char * file_path, bool append) {
     fclose(fd);
     dup2(SET_STDOUT, 1);
     SET_STDOUT = -1;
+}
+
+void _handle_input_funct(char * input_command, char * file_path) {
+    SET_STDIN = dup(0);
+    close(0);
+
+    FILE * fd;
+    if (!(fd = fopen(file_path, "r"))) {
+        // should not go here
+        exit(2);
+    }
+
+    _run_external(input_command);
+    fclose(fd);
+    dup2(SET_STDIN, 0);
+    SET_STDIN = -1;
 }
