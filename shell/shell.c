@@ -42,7 +42,7 @@ bool _handle_prefix(char * command);
 bool _handle_ps(char * command, vector * args);
 void _add_to_history(char * command);
 void _run_command(char * command);
-bool _run_external(char * command, bool print_cmd);
+bool _run_external(char * command);
 vector * _get_commands(char ** command, char * separator);
 void _kill_foreground();
 void _create_process(pid_t pid, char * command, bool background);
@@ -69,6 +69,7 @@ static FILE * SCRIPT_FILE;  // File to run commands from (if -f)
 static FILE * INPUT_STREAM; // Used to store the stream to read commands from
 static ssize_t CHARS_READ;
 static vector * PROCESSES;
+static int SET_STDOUT = -1;
 
 /*
  *  MAIN SHELL FUNCTION
@@ -446,7 +447,7 @@ void _add_to_history(char * command) {
 }
 
 // run command externally by forking, returns whether or not the command ran successfully
-bool _run_external(char * command, bool print_cmd) {
+bool _run_external(char * command) {
     bool success = true;
     fflush(stdout);
     pid_t child;
@@ -455,8 +456,21 @@ bool _run_external(char * command, bool print_cmd) {
         print_fork_failed();
         success = false;
     } else {
-        if (child != 0 && print_cmd) {
-            print_command_executed(child);  
+        if (child != 0) {
+            if (SET_STDOUT != -1) {
+                // general tomfoolery going on here
+                int save = dup(1);
+                close(1);
+                dup2(SET_STDOUT, 1);
+
+                print_command_executed(child);
+
+                SET_STDOUT = dup(1);
+                close(1);
+                dup2(save, 1);
+            } else {
+                print_command_executed(child);
+            }
         }
         
         bool background = _is_background_command(command);
@@ -525,24 +539,24 @@ void _run_command(char * command) {
             cmd1 = (char*)*vector_at(commands, 0);
             cmd2 = (char*)*vector_at(commands, 1);
 
-            if (_run_external(cmd1, true)) {
-                _run_external(cmd2, true);
+            if (_run_external(cmd1)) {
+                _run_external(cmd2);
             }
 
         } else if ((commands = _get_commands(&command, "||"))) {
             cmd1 = (char*)*vector_at(commands, 0);
             cmd2 = (char*)*vector_at(commands, 1);
 
-            if (!_run_external(cmd1, true)) {
-                _run_external(cmd2, true);
+            if (!_run_external(cmd1)) {
+                _run_external(cmd2);
             }
 
         } else if ((commands = _get_commands(&command, ";"))) {
             cmd1 = (char*)*vector_at(commands, 0);
             cmd2 = (char*)*vector_at(commands, 1);
 
-            _run_external(cmd1, true);
-            _run_external(cmd2, true);
+            _run_external(cmd1);
+            _run_external(cmd2);
         } else if ((commands = _get_commands(&command, ">"))) {
             char * input_command = vector_get(commands, 0);
             char * file_path = vector_get(commands, 1);
@@ -554,7 +568,7 @@ void _run_command(char * command) {
         
         // TODO: Reconnect this
         else {
-            _run_external(command, true);
+            _run_external(command);
         }
 
         if (commands) vector_destroy(commands);
@@ -801,8 +815,7 @@ char * _create_start_time_string(unsigned long long start_time) {
 
 void _handle_output_funct(char * input_command, char * file_path) {
     // concept -> redirect stdout to file descriptor, then revert it
-    print_command(input_command);
-    int stdout_fd = dup(1);
+    SET_STDOUT = dup(1);
     close(1);
 
     FILE * fd;
@@ -812,7 +825,8 @@ void _handle_output_funct(char * input_command, char * file_path) {
         exit(2);
     }
 
-    _run_external(input_command, false);
+    _run_external(input_command);
     fclose(fd);
-    dup2(stdout_fd, 1);
+    dup2(SET_STDOUT, 1);
+    SET_STDOUT = -1;
 }
