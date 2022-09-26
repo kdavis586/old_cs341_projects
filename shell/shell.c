@@ -438,7 +438,13 @@ bool _run_external(char * command) {
 
         if (child == 0) {
             // Child process
-            fprintf(stderr, "Child: %s\n", command);
+
+            // Get rid of ampersand before parsing
+            if (background) {
+                char * ampersand = strchr(command, '&');
+                *ampersand = '\0';
+            }
+            
             wordexp_t fake_argvc;
             if (wordexp(command, &fake_argvc, 0) != 0) {
                 exit(1);
@@ -575,11 +581,11 @@ bool _is_background_command(char * command) {
     vector * split = sstring_split(cmd_sstr, ' ');
     char * last_arg = vector_get(split, vector_size(split) - 1);
 
-    bool is_background = (strcmp(last_arg, "&") == 0);
-    if (is_background) {
-        char * ampersand = strchr(command, '&');
-        *ampersand = '\0';
-    }
+    bool is_background = strcmp(last_arg, "&") == 0;
+    // if (is_background) {
+    //     char * ampersand = strchr(command, '&');
+    //     *ampersand = '\0';
+    // }
     sstring_destroy(cmd_sstr);
     vector_destroy(split);
 
