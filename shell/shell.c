@@ -18,7 +18,11 @@
 #include <unistd.h>
 #include <wordexp.h>
 
-
+// Define process struct
+typedef struct process {
+    char *command;
+    pid_t pid;
+} process;
 
 // Forward declare helper functions
 void _shell_setup(pid_t * shell_pid, int argc, char * argv[]);
@@ -35,6 +39,7 @@ bool _handle_history(char * command, vector * args);
 bool _handle_prev_command(char * command, vector * args);
 bool _handle_cd(char * command, vector * args);
 bool _handle_prefix(char * command);
+bool _handle_ps(char * command, vector * args);
 void _add_to_history(char * command);
 void _run_command(char * command);
 bool _run_external(char * command);
@@ -44,12 +49,12 @@ void _create_process(pid_t pid, char * command, bool background);
 bool _is_background_command(char * command);
 void _handle_background_processes(char * command);
 void _remove_process(pid_t pid);
-
-// Define process struct
-typedef struct process {
-    char *command;
-    pid_t pid;
-} process;
+void _list_processes();
+void _populate_process_info(process_info * pinfo, process * prcss);
+void _free_process_info(process_info * pinfo);
+char * _get_proc_pid_path(process * prcss);
+char * _create_run_time_string(unsigned long utime, unsigned long stime);
+char * _create_start_time_string(unsigned long long start_time);
 
 // Globals that will be used for the duration of the shell
 static char * CWD; // Current working directory
@@ -250,6 +255,7 @@ bool _run_builtin(char * command, vector * args) {
     if (_handle_prev_command(command, args)) return true;
     if (_handle_cd(command, args)) return true;
     if (_handle_prefix(command)) return true;
+    if (_handle_ps(command, args)) return true;
 
     return false;
 }
@@ -371,7 +377,7 @@ bool _handle_cd(char * command, vector * args) {
     return false;
 }
 
-// hanldes if user types !<prefix>
+// handles if user types !<prefix>
 bool _handle_prefix(char * command) {
     if (*command == '!') {
         char * prefix = malloc(strlen(command));
@@ -413,6 +419,32 @@ bool _handle_prefix(char * command) {
     return false;
 }
 
+// handles ps
+bool _handle_ps(char * command, vector * args) {
+    
+
+    // TODO: remove
+    size_t i;
+    for (i = 0; i < vector_size(PROCESSES); i++) {
+        process * prcss = vector_get(PROCESSES, i);
+    }
+    if (vector_size(args) > 0) {
+        char * ps = vector_get(args, 0);
+
+        if (strcmp(ps, "ps") == 0) {
+            if (vector_size(args) > 1) {
+                print_invalid_command(command);
+            } else {
+                print_process_info_header();
+                _list_processes();
+                _add_to_history(command);
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
 // Adds command to history with a newline character
 void _add_to_history(char * command) {
     command[strlen(command)] = '\n';
@@ -434,7 +466,6 @@ bool _run_external(char * command) {
         }
         
         bool background = _is_background_command(command);
-        _create_process(child, command, background);
 
         if (child == 0) {
             // Child process
@@ -457,6 +488,7 @@ bool _run_external(char * command) {
             wordfree(&fake_argvc);
             exit(1);
         } else {
+            _create_process(child, command, background);
             if (!background) {
                 int status;
                 pid_t pid = waitpid(child, &status, 0);
@@ -477,8 +509,11 @@ bool _run_external(char * command) {
     return success;
 }
 
-// Run a general command.
+// Run a general command.f
 void _run_command(char * command) {
+    // Handle background processes
+    _handle_background_processes(command);  
+
     char * newline = strchr(command, '\n');
     if (newline) {
         *newline = '\0';
@@ -527,10 +562,7 @@ void _run_command(char * command) {
     }
 
     sstring_destroy(sstr_command);
-    vector_destroy(args);
-
-    // Handle background processes
-    _handle_background_processes(command);    
+    vector_destroy(args);  
 }
 
 vector * _get_commands(char ** command, char * separator) {
@@ -567,9 +599,12 @@ void _kill_foreground() {
 
 // Creates a process struct and stores it in PROCESSES
 void _create_process(pid_t pid, char * command, bool background) {
+    // create a copy of command to store
+    char * command_copy = strdup(command);
+
     process * new_process = (process *) malloc(sizeof(process));
     // TODO: Add some logic about process groups if the process is a background process
-    new_process->command = command;
+    new_process->command = command_copy;
     new_process->pid = pid;
 
     vector_push_back(PROCESSES, new_process);
@@ -614,4 +649,139 @@ void _remove_process(pid_t pid) {
             vector_erase(PROCESSES, i);
         }
     }
+}
+
+void _list_processes() {
+    size_t i;
+
+    for (i = 0; i < vector_size(PROCESSES); i++) {
+        process * prcss = vector_get(PROCESSES, i);
+        process_info * pinfo = (process_info *) malloc(sizeof(process_info));
+        _populate_process_info(pinfo, prcss);
+        print_process_info(pinfo);
+        _free_process_info(pinfo);
+    }
+}
+
+void _populate_process_info(process_info * pinfo, process * prcss) {
+    char * pid_path = _get_proc_pid_path(prcss);
+
+    // Open proc for reading and free the path char *
+    FILE * fd = fopen(pid_path, "r");
+    free(pid_path);
+
+    // Setup needed variables for value storage
+    long int nthreads;
+    unsigned long virtual_size; 
+    char state;
+    unsigned long long start_time;
+    unsigned long utime;
+    unsigned long stime;
+    
+    // Ignore all unwanted values via '*', store the desired values accordingly
+    int count = fscanf(fd, "%*d %*s %c %*d %*d %*d %*d %*d %*u %*lu %*lu %*lu %*lu %lu %lu %*ld %*ld %*ld %*ld %ld %*ld %llu %lu", &state, &utime, &stime, &nthreads, &start_time, &virtual_size);
+    if (count != 6) {
+        // shouldn't go here ever
+        exit(2);
+    }
+    fclose(fd);
+
+    // Get clock time into units that are not ticks
+    char * time_str = _create_run_time_string(utime, stime);
+
+    // start time adjustment
+    char * start_str = _create_start_time_string(start_time);
+
+    pinfo->pid = prcss->pid;
+    pinfo->nthreads = nthreads;
+    pinfo->vsize = virtual_size / 1024;
+    pinfo->state = state;           // TODO: Populate all of this information from /proc/<pid>/stat
+    pinfo->start_str = start_str;
+    pinfo->time_str = time_str;
+    pinfo->command = strdup(prcss->command);
+}
+
+char * _get_proc_pid_path(process * prcss) {
+    sstring * sstr_path = cstr_to_sstring("/proc/");
+
+    // Get length of number in char * form, allocate for it, store it, then turn into sstring for appending later
+    int pid_length = snprintf(NULL, 0, "%d", prcss->pid);
+    char * pid_cstr = malloc(pid_length + 1);
+    snprintf(pid_cstr, pid_length + 1, "%d", prcss->pid);
+    sstring * pid_sstr = cstr_to_sstring(pid_cstr);
+
+    sstring * sstring_stat = cstr_to_sstring("/stat");
+
+    // Append the path together and turn into cstr
+    sstring_append(sstr_path, pid_sstr);
+    sstring_append(sstr_path, sstring_stat);
+    char * pid_path = sstring_to_cstr(sstr_path);
+
+    // Free all resources used for the cstring creation
+    sstring_destroy(sstr_path);
+    sstring_destroy(pid_sstr);
+    sstring_destroy(sstring_stat);
+    free(pid_cstr);
+
+    return pid_path;
+}
+
+
+void _free_process_info(process_info * pinfo) {
+    free(pinfo->start_str);
+    free(pinfo->time_str);
+    free(pinfo->command);
+    free(pinfo);
+    pinfo = NULL;
+}
+
+char * _create_run_time_string(unsigned long utime, unsigned long stime) {
+    utime /= sysconf(_SC_CLK_TCK);
+    stime /= sysconf(_SC_CLK_TCK);
+    size_t cpu_time = (size_t)(utime + stime);
+    size_t minutes = cpu_time / 60;
+    size_t seconds = cpu_time % 60;
+
+    // Allocate the right amount of space for the time string using snprintf
+    size_t minutes_len = snprintf(NULL, 0, "%zu", minutes);
+    size_t seconds_len = snprintf(NULL, 0, "%zu", seconds);
+
+    // allocate enough space for extra 0, :, and NUL (\0)
+    char * time_str = malloc(minutes_len + seconds_len + 3);
+    if (seconds < 10) {
+        snprintf(time_str, minutes_len + seconds_len + 3, "%zu:0%zu", minutes, seconds);
+    } else {
+        snprintf(time_str, minutes_len + seconds_len + 2, "%zu:%zu", minutes, seconds);
+    }
+
+    return time_str;
+}
+
+char * _create_start_time_string(unsigned long long start_time) {
+    start_time /= sysconf(_SC_CLK_TCK); // now in seconds
+
+    // Get system uptime
+    FILE * fd = fopen("/proc/uptime", "r");
+    unsigned long long uptime;
+    fscanf(fd, "%llu %*llu", &uptime);
+    fclose(fd);
+
+    start_time += uptime;
+    size_t start_hours = (size_t)(start_time / (60 * 60));
+    size_t start_minutes = (size_t)(start_time / 60 % 60);
+
+    // Allocate the right amount of space for the time string using snprintf
+    int start_h_len = snprintf(NULL, 0, "%zu", start_hours);
+    int start_m_len = snprintf(NULL, 0, "%zu", start_minutes);
+
+    // allocate enough space for extra 0, :, and NUL (\0)
+    size_t start_str_len = (start_h_len + start_m_len);
+    char * start_str = malloc(start_str_len+ 3);
+    if (start_minutes < 10) {
+        snprintf(start_str, start_str_len + 3, "%zu:0%zu", start_hours, start_minutes);
+    } else {
+        snprintf(start_str, start_str_len + 2, "%zu:%zu", start_hours, start_minutes);
+    }
+
+    return start_str;
 }
