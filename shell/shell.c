@@ -206,14 +206,20 @@ void _cleanup() {
     vector_destroy(CMD_HIST);
     CMD_HIST = NULL;
 
-    vector_destroy(PROCESSES); // TODO: This does not free internal children, will cause leak
-    PROCESSES = NULL; 
-
     if (HISTORY_FILE) fclose(HISTORY_FILE);
     HISTORY_FILE = NULL;
 
     if (SCRIPT_FILE) fclose(SCRIPT_FILE);
     SCRIPT_FILE = NULL;
+
+    size_t i;
+    for (i = 0; i < vector_size(PROCESSES); i++) {
+        process * prcss = vector_get(PROCESSES, i);
+        free(prcss->command);
+        free(prcss);
+    }
+    vector_destroy(PROCESSES);
+    PROCESSES = NULL;
 }
 
 // Validates that the options passed into argv are valid and expected
@@ -494,7 +500,7 @@ bool _run_external(char * command) {
 
             char ** fake_argv = fake_argvc.we_wordv;
 
-            //_cleanup(); // TODO: Do I need this here?
+            _cleanup(); // TODO: Do I need this here?
             execvp(fake_argv[0], fake_argv);
             wordfree(&fake_argvc);
             exit(1);
@@ -674,6 +680,8 @@ void _remove_process(pid_t pid) {
     size_t i;
     for (i = 0; i < vector_size(PROCESSES); i++) {
         process * prcss = vector_get(PROCESSES, i);
+        free(prcss->command);
+        free(prcss);
         if (prcss->pid == pid) {
             vector_erase(PROCESSES, i);
         }
