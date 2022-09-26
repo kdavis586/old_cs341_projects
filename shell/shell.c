@@ -40,6 +40,10 @@ void _run_command(char * command);
 bool _run_external(char * command);
 vector * _get_commands(char ** command, char * separator);
 void _kill_foreground();
+void _create_process(pid_t pid, char * command, bool background);
+bool _is_background_command(char * command);
+void _handle_background_processes(char * command);
+void _remove_process(pid_t pid);
 
 // Define process struct
 typedef struct process {
@@ -58,6 +62,7 @@ static FILE * HISTORY_FILE; // File for logging the history (if -h)
 static FILE * SCRIPT_FILE;  // File to run commands from (if -f)
 static FILE * INPUT_STREAM; // Used to store the stream to read commands from
 static ssize_t CHARS_READ;
+static vector * PROCESSES;
 
 /*
  *  MAIN SHELL FUNCTION
@@ -75,7 +80,7 @@ int shell(int argc, char *argv[]) {
         if (CHARS_READ > 0) {
             // Format for running command
             _handle_exit();
-            _run_command(INPUT_BUFFER);
+            _run_command(INPUT_BUFFER);    
         }
 
     }
@@ -103,6 +108,8 @@ void _shell_setup(pid_t * shell_pid, int argc, char * argv[]) {
     SCRIPT_FILE = NULL;
     INPUT_STREAM = stdin;
     CHARS_READ = -1;
+    PROCESSES = shallow_vector_create();
+
     
     *shell_pid = getpid();
 
@@ -188,6 +195,9 @@ void _cleanup() {
 
     vector_destroy(CMD_HIST);
     CMD_HIST = NULL;
+
+    vector_destroy(PROCESSES); // TODO: This does not free internal children, will cause leak
+    PROCESSES = NULL; 
 
     if (HISTORY_FILE) fclose(HISTORY_FILE);
     HISTORY_FILE = NULL;
@@ -423,28 +433,37 @@ bool _run_external(char * command) {
             print_command_executed(child);
         }
         
+        bool background = _is_background_command(command);
+        _create_process(child, command, background);
+
         if (child == 0) {
             // Child process
+            fprintf(stderr, "Child: %s\n", command);
             wordexp_t fake_argvc;
             if (wordexp(command, &fake_argvc, 0) != 0) {
                 exit(1);
             }
 
             char ** fake_argv = fake_argvc.we_wordv;
-            _cleanup();
+
+            //_cleanup(); // TODO: Do I need this here?
             execvp(fake_argv[0], fake_argv);
             wordfree(&fake_argvc);
             exit(1);
         } else {
-            int status;
-            pid_t pid = waitpid(child, &status, 0);
+            if (!background) {
+                int status;
+                pid_t pid = waitpid(child, &status, 0);
 
-            if (pid == -1) {
-                print_wait_failed();
-                success = false;
-            } else if ((WIFSIGNALED(status) && WTERMSIG(status) != SIGINT)|| (WIFEXITED(status) && WEXITSTATUS(status) != 0)) {
-                print_exec_failed(command);
-                success = false;
+                if (pid == -1) {
+                    print_wait_failed();
+                    success = false;
+                } else if ((WIFSIGNALED(status) && WTERMSIG(status) != SIGINT)|| (WIFEXITED(status) && WEXITSTATUS(status) != 0)) {
+                    print_exec_failed(command);
+                    success = false;
+                }
+
+                _remove_process(child);
             }
         }
     }
@@ -503,6 +522,9 @@ void _run_command(char * command) {
 
     sstring_destroy(sstr_command);
     vector_destroy(args);
+
+    // Handle background processes
+    _handle_background_processes(command);    
 }
 
 vector * _get_commands(char ** command, char * separator) {
@@ -532,6 +554,58 @@ vector * _get_commands(char ** command, char * separator) {
     return commands;
 }
 
+// Kills forground child
 void _kill_foreground() {
     
+}
+
+// Creates a process struct and stores it in PROCESSES
+void _create_process(pid_t pid, char * command, bool background) {
+    process * new_process = (process *) malloc(sizeof(process));
+    // TODO: Add some logic about process groups if the process is a background process
+    new_process->command = command;
+    new_process->pid = pid;
+
+    vector_push_back(PROCESSES, new_process);
+}
+
+// Checks to see if command is suffixed with a "&", if so, it modifies the command to exclude the "&"
+bool _is_background_command(char * command) {
+    sstring * cmd_sstr = cstr_to_sstring(command);
+    vector * split = sstring_split(cmd_sstr, ' ');
+    char * last_arg = vector_get(split, vector_size(split) - 1);
+
+    bool is_background = (strcmp(last_arg, "&") == 0);
+    if (is_background) {
+        char * ampersand = strchr(command, '&');
+        *ampersand = '\0';
+    }
+    sstring_destroy(cmd_sstr);
+    vector_destroy(split);
+
+    return is_background;
+}
+
+void _handle_background_processes(char * command) {
+    int status;
+    pid_t pid = waitpid(-1, &status, WNOHANG);
+    if (pid == -1 && vector_size(PROCESSES) != 0) {
+        print_wait_failed();
+    } else if (pid != 0) {
+        _remove_process(pid);
+
+        if ((WIFSIGNALED(status) && WTERMSIG(status) != SIGINT)|| (WIFEXITED(status) && WEXITSTATUS(status) != 0)) {
+            print_exec_failed(command);
+        }
+    }
+}
+
+void _remove_process(pid_t pid) {
+    size_t i;
+    for (i = 0; i < vector_size(PROCESSES); i++) {
+        process * prcss = vector_get(PROCESSES, i);
+        if (prcss->pid == pid) {
+            vector_erase(PROCESSES, i);
+        }
+    }
 }
