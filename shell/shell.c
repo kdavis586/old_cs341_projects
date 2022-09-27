@@ -58,6 +58,8 @@ char * _create_start_time_string(unsigned long long start_time);
 void _handle_output_append_funct(char * input_command, char * file_path, bool append);
 bool _handle_kill_child(char * command, vector * args);
 process * _get_process(pid_t pid);
+bool _handle_stop_child(char * command, vector * args);
+bool _handle_continue_child(char * command, vector * args);
 
 // Globals that will be used for the duration of the shell
 static char * CWD; // Current working directory
@@ -267,6 +269,8 @@ bool _run_builtin(char * command, vector * args) {
     if (_handle_prefix(command)) return true;
     if (_handle_ps(command, args)) return true;
     if (_handle_kill_child(command, args)) return true;
+    if (_handle_stop_child(command, args)) return true;
+    if (_handle_continue_child(command, args)) return true;
 
     return false;
 }
@@ -856,33 +860,21 @@ bool _handle_kill_child(char * command, vector * args) {
                 pid_t pid;
                 if (sscanf(vector_get(args, 1), "%d", &pid) != 1) {
                     print_invalid_command(command);
-                    return true;
-                }
-
-                bool found = false;
-                size_t i;
-                for (i = 0; i < vector_size(PROCESSES); i++) {
-                    process * prcss = vector_get(PROCESSES, i);
-
-                    if (prcss->pid == pid) {
-                        found = true;
-                        int kill_value;
-                        if ((kill_value = kill(pid, SIGKILL)) == -1) {
+                } else {
+                    process * prcss = _get_process(pid);
+                    if (prcss) {
+                        if (kill(pid, SIGKILL) == -1) {
                             // should not go here
                             exit(2);
                         }
 
                         print_killed_process(pid, prcss->command);
                         _remove_process(pid);
-                        break;
+                    } else {
+                        print_no_process_found(pid);
                     }
                 }
-
-                if (!found) {
-                    print_no_process_found(pid);
-                }
             }
-
             _add_to_history(command);
             return true;
         }
@@ -891,20 +883,71 @@ bool _handle_kill_child(char * command, vector * args) {
     return false;
 }
 
-// bool _handle_stop_child(char * command, vector * args) {
-//     if (vector_size(args) > 0) {
-//         char * cmd = vector_get(args, 0);
+bool _handle_stop_child(char * command, vector * args) {
+    if (vector_size(args) > 0) {
+        char * cmd = vector_get(args, 0);
 
-//         if (strcmp(cmd, "stop") == 0) {
-//             if (vector_size(args) != 2) {
-//                 print_invalid_command(command);
-//             } else {
+        if (strcmp(cmd, "stop") == 0) {
+            if (vector_size(args) != 2) {
+                print_invalid_command(command);
+            } else {
+                pid_t pid;
+                if (sscanf(vector_get(args, 1), "%d", &pid) != 1) {
+                    print_invalid_command(command);
+                } else {
+                    process * prcss = _get_process(pid);
+                    if (prcss) {
+                        if (kill(pid, SIGSTOP) == -1) {
+                            // should not go here
+                            exit(2);
+                        }
 
-//             }
-//         }
-//     }
-//     return false;
-// }
+                        print_stopped_process(pid, prcss->command);
+                    } else {
+                        print_no_process_found(pid);
+                    }
+                }
+            }
+
+            _add_to_history(command);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool _handle_continue_child(char * command, vector * args) {
+    if (vector_size(args) > 0) {
+        char * cmd = vector_get(args, 0);
+
+        if (strcmp(cmd, "cont") == 0) {
+            if (vector_size(args) != 2) {
+                print_invalid_command(command);
+            } else {
+                pid_t pid;
+                if (sscanf(vector_get(args, 1), "%d", &pid) != 1) {
+                    print_invalid_command(command);
+                } else {
+                    process * prcss = _get_process(pid);
+                    if (prcss) {
+                        if (kill(pid, SIGCONT) == -1) {
+                            // should not go here
+                            exit(2);
+                        }
+
+                        print_continued_process(pid, prcss->command);
+                    } else {
+                        print_no_process_found(pid);
+                    }
+                }
+            }
+
+            _add_to_history(command);
+            return true;
+        }
+    }
+    return false;
+}
 
 process * _get_process(pid_t pid) {
     process * return_val = NULL;
