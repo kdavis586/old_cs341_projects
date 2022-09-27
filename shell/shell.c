@@ -22,6 +22,7 @@
 typedef struct process {
     char *command;
     pid_t pid;
+    process_info * pinfo;
 } process;
 
 // Forward declare helper functions
@@ -50,7 +51,7 @@ bool _is_background_command(char * command);
 void _handle_background_processes();
 void _remove_process(pid_t pid);
 void _list_processes();
-void _populate_process_info(process_info * pinfo, process * prcss);
+void _populate_process_info(process * prcss);
 void _free_process_info(process_info * pinfo);
 char * _get_proc_pid_path(process * prcss);
 char * _create_run_time_string(unsigned long utime, unsigned long stime);
@@ -219,7 +220,12 @@ void _cleanup() {
     for (i = 0; i < vector_size(PROCESSES); i++) {
         process * prcss = vector_get(PROCESSES, i);
         free(prcss->command);
+        free(prcss->pinfo->start_str);
+        free(prcss->pinfo->time_str);
+        free(prcss->pinfo->command);
+        free(prcss->pinfo);
         free(prcss);
+        vector_erase(PROCESSES, i);
     }
     vector_destroy(PROCESSES);
     PROCESSES = NULL;
@@ -646,6 +652,10 @@ void _create_process(pid_t pid, char * command, bool background) {
     // TODO: Add some logic about process groups if the process is a background process
     new_process->command = command_copy;
     new_process->pid = pid;
+    new_process->pinfo = malloc(sizeof(process_info));
+    new_process->pinfo->start_str = NULL;
+    new_process->pinfo->time_str = NULL;
+    _populate_process_info(new_process);
 
     vector_push_back(PROCESSES, new_process);
 }
@@ -690,6 +700,10 @@ void _remove_process(pid_t pid) {
         process * prcss = vector_get(PROCESSES, i);
         if (prcss->pid == pid) {
             free(prcss->command);
+            free(prcss->pinfo->start_str);
+            free(prcss->pinfo->time_str);
+            free(prcss->pinfo->command);
+            free(prcss->pinfo);
             free(prcss);
             vector_erase(PROCESSES, i);
         }
@@ -701,14 +715,12 @@ void _list_processes() {
 
     for (i = 0; i < vector_size(PROCESSES); i++) {
         process * prcss = vector_get(PROCESSES, i);
-        process_info * pinfo = (process_info *) malloc(sizeof(process_info));
-        _populate_process_info(pinfo, prcss);
-        print_process_info(pinfo);
-        _free_process_info(pinfo);
+        _populate_process_info(prcss);
+        print_process_info(prcss->pinfo); // TODO: UPDATE process info free
     }
 }
 
-void _populate_process_info(process_info * pinfo, process * prcss) {
+void _populate_process_info(process * prcss) {
     char * pid_path = _get_proc_pid_path(prcss);
 
     // Open proc for reading and free the path char *
@@ -739,15 +751,20 @@ void _populate_process_info(process_info * pinfo, process * prcss) {
     char * time_str = _create_run_time_string(utime, stime);
 
     // start time adjustment
-    char * start_str = _create_start_time_string(start_time);
+    process_info * pinfo = prcss->pinfo;
 
-    pinfo->pid = prcss->pid;
+    if (!pinfo->pid) pinfo->pid = prcss->pid;
     pinfo->nthreads = nthreads;
     pinfo->vsize = virtual_size / 1024;
-    pinfo->state = state;           // TODO: Populate all of this information from /proc/<pid>/stat
-    pinfo->start_str = start_str;
+    pinfo->state = state;
+
+    if (!pinfo->start_str) {
+        pinfo->start_str = _create_start_time_string(start_time);
+    }
+
+    free(pinfo->time_str);
     pinfo->time_str = time_str;
-    pinfo->command = strdup(prcss->command);
+    if (!pinfo->command) pinfo->command = strdup(prcss->command);
 }
 
 char * _get_proc_pid_path(process * prcss) {
@@ -807,33 +824,53 @@ char * _create_run_time_string(unsigned long utime, unsigned long stime) {
 }
 
 char * _create_start_time_string(unsigned long long start_time) {
-    start_time /= sysconf(_SC_CLK_TCK); // now in seconds
+    // start_time /= sysconf(_SC_CLK_TCK); // now in seconds
 
-    // Get system uptime
-    FILE * fd;
-    if (!(fd = fopen("/proc/uptime", "r"))) {
-        // should never go here
-        exit(2);
-    }
-    unsigned long long uptime;
-    fscanf(fd, "%llu %*llu", &uptime);
-    fclose(fd);
+    // // Get system uptime
+    // FILE * fd;
+    // if (!(fd = fopen("/proc/uptime", "r"))) {
+    //     // should never go here
+    //     exit(2);
+    // }
+    // unsigned long long uptime;
+    // fscanf(fd, "%llu %*llu", &uptime);
+    // fclose(fd);
 
-    start_time += uptime;
-    size_t start_hours = (size_t)(start_time / (60 * 60));
-    size_t start_minutes = (size_t)(start_time / 60 % 60);
+    // start_time += uptime;
+    // size_t start_hours = (size_t)(start_time / (60 * 60));
+    // size_t start_minutes = (size_t)(start_time / 60 % 60);
 
-    // Allocate the right amount of space for the time string using snprintf
-    int start_h_len = snprintf(NULL, 0, "%zu", start_hours);
-    int start_m_len = snprintf(NULL, 0, "%zu", start_minutes);
+    // // Allocate the right amount of space for the time string using snprintf
+    // int start_h_len = snprintf(NULL, 0, "%zu", start_hours);
+    // int start_m_len = snprintf(NULL, 0, "%zu", start_minutes);
+
+    // // allocate enough space for extra 0, :, and NUL (\0)
+    // size_t start_str_len = (start_h_len + start_m_len);
+    // char * start_str = malloc(start_str_len+ 3);
+    // if (start_minutes < 10) {
+    //     snprintf(start_str, start_str_len + 3, "%zu:0%zu", start_hours, start_minutes);
+    // } else {
+    //     snprintf(start_str, start_str_len + 2, "%zu:%zu", start_hours, start_minutes);
+    // }
+
+    time_t base_time;
+    struct tm * timeinfo;
+
+    time(&base_time);
+    timeinfo = localtime(&base_time);
+    int hours = timeinfo->tm_hour;
+    int minutes = timeinfo->tm_min;
+
+    int hours_len = snprintf(NULL, 0, "%d", hours);
+    int mins_len = snprintf(NULL, 0, "%d", minutes);
 
     // allocate enough space for extra 0, :, and NUL (\0)
-    size_t start_str_len = (start_h_len + start_m_len);
-    char * start_str = malloc(start_str_len+ 3);
-    if (start_minutes < 10) {
-        snprintf(start_str, start_str_len + 3, "%zu:0%zu", start_hours, start_minutes);
+    size_t str_len = (size_t)(hours_len + mins_len);
+    char * start_str = malloc(str_len+ 3);
+    if (minutes < 10) {
+        snprintf(start_str, str_len + 3, "%d:0%d", hours, minutes);
     } else {
-        snprintf(start_str, start_str_len + 2, "%zu:%zu", start_hours, start_minutes);
+        snprintf(start_str, str_len + 2, "%d:%d", hours, minutes);
     }
 
     return start_str;
