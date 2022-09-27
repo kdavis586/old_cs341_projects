@@ -47,7 +47,7 @@ vector * _get_commands(char ** command, char * separator);
 void _kill_foreground();
 void _create_process(pid_t pid, char * command, bool background);
 bool _is_background_command(char * command);
-void _handle_background_processes(char * command);
+void _handle_background_processes();
 void _remove_process(pid_t pid);
 void _list_processes();
 void _populate_process_info(process_info * pinfo, process * prcss);
@@ -57,6 +57,7 @@ char * _create_run_time_string(unsigned long utime, unsigned long stime);
 char * _create_start_time_string(unsigned long long start_time);
 void _handle_output_append_funct(char * input_command, char * file_path, bool append);
 bool _handle_kill_child(char * command, vector * args);
+process * _get_process(pid_t pid);
 
 // Globals that will be used for the duration of the shell
 static char * CWD; // Current working directory
@@ -258,13 +259,14 @@ bool _validate_options(int argc, char * argv[], char ** hist_path, char ** scrip
 }
 
 // returns whether or not a builtin function ran
-bool _run_builtin(char * command, vector * args) {  
+bool _run_builtin(char * command, vector * args) {
     if (vector_size(args) == 0) return false;
     if (_handle_history(command, args)) return true;
     if (_handle_prev_command(command, args)) return true;
     if (_handle_cd(command, args)) return true;
     if (_handle_prefix(command)) return true;
     if (_handle_ps(command, args)) return true;
+    if (_handle_kill_child(command, args)) return true;
 
     return false;
 }
@@ -306,7 +308,7 @@ bool _handle_history(char * command, vector * args) {
         char * first_val = (char *)*vector_at(args, 0);
         if (strcmp(first_val, "!history") == 0) {
             if (vector_size(args) > 1) {
-                //print_invalid_command(command);
+                print_invalid_command(command);
             } else {
                 _print_history();
             }
@@ -322,7 +324,7 @@ bool _handle_prev_command(char * command, vector * args) {
     if (vector_size(args) > 0) {
         if (*command == '#') {
             if (vector_size(args) > 1) {
-                //print_invalid_command(command);
+                print_invalid_command(command);
                 return true;
             }
 
@@ -331,7 +333,7 @@ bool _handle_prev_command(char * command, vector * args) {
             char * itr = number;
             while(*itr) {
                 if (!isdigit(*itr)) {
-                   // print_invalid_command(command);
+                    print_invalid_command(command);
                     free(number);
                     return true;
                 }
@@ -368,7 +370,7 @@ bool _handle_cd(char * command, vector * args) {
 
         if (strcmp(cd, "cd") == 0) {
             if (vector_size(args) == 1 || vector_size(args) >= 3) {
-               // print_invalid_command(command);
+               print_invalid_command(command);
             } else {
                 char * path = (char *)*vector_at(args, 1);
                 if (chdir(path) == -1) {
@@ -435,7 +437,7 @@ bool _handle_ps(char * command, vector * args) {
 
         if (strcmp(ps, "ps") == 0) {
             if (vector_size(args) > 1) {
-               // print_invalid_command(command);
+               print_invalid_command(command);
             } else {
                 print_process_info_header();
                 _list_processes();
@@ -527,12 +529,11 @@ bool _run_external(char * command) {
 // Run a general command.f
 void _run_command(char * command) {
     // Handle background processes
-    _handle_background_processes(command);  
+    _handle_background_processes(command);
     char * newline = strchr(command, '\n');
     if (newline) {
         *newline = '\0';
     }
-    
     sstring * sstr_command = cstr_to_sstring(command);
     vector * args = sstring_split(sstr_command, ' '); // used for _run_builtin 
 
@@ -654,17 +655,20 @@ bool _is_background_command(char * command) {
     return is_background;
 }
 
-void _handle_background_processes(char * command) {
+void _handle_background_processes() {
     int status;
     pid_t pid = waitpid(-1, &status, WNOHANG);
     if (pid == -1 && vector_size(PROCESSES) != 0) {
         print_wait_failed();
     } else if (pid != 0) {
-        _remove_process(pid);
-
-        if ((WIFSIGNALED(status) && WTERMSIG(status) != SIGINT)|| (WIFEXITED(status) && WEXITSTATUS(status) != 0)) {
-            print_exec_failed(command);
+        process * prcss = _get_process(pid);
+        if (prcss) {
+            if ((WIFSIGNALED(status) && WTERMSIG(status) != SIGINT)|| (WIFEXITED(status) && WEXITSTATUS(status) != 0)) {
+                print_exec_failed(prcss->command);
+            }
         }
+
+        _remove_process(pid);
     }
 }
 
@@ -847,7 +851,7 @@ bool _handle_kill_child(char * command, vector * args) {
 
         if (strcmp(cmd, "kill") == 0) {
             if (vector_size(args) != 2) {
-                //print_invalid_command(command);
+                print_invalid_command(command);
             } else {
                 pid_t pid = (pid_t)atoi(vector_get(args, 1));
                 bool found = false;
@@ -864,7 +868,8 @@ bool _handle_kill_child(char * command, vector * args) {
                         }
 
                         print_killed_process(pid, prcss->command);
-                        vector_erase(PROCESSES, i);
+                        _remove_process(pid);
+                        break;
                     }
                 }
 
@@ -878,4 +883,18 @@ bool _handle_kill_child(char * command, vector * args) {
     }
 
     return false;
+}
+
+process * _get_process(pid_t pid) {
+    process * return_val = NULL;
+    size_t i;
+    for (i = 0; i < vector_size(PROCESSES); i++) {
+        process * prcss = vector_get(PROCESSES, i);
+        if (prcss->pid == pid) {
+            return_val = prcss;
+            break;
+        }
+    }
+
+    return return_val;
 }
