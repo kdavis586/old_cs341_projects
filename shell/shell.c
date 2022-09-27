@@ -853,7 +853,12 @@ bool _handle_kill_child(char * command, vector * args) {
             if (vector_size(args) != 2) {
                 print_invalid_command(command);
             } else {
-                pid_t pid = (pid_t)atoi(vector_get(args, 1));
+                pid_t pid;
+                if (sscanf(vector_get(args, 1), "%d", &pid) != 1) {
+                    print_invalid_command(command);
+                    return true;
+                }
+
                 bool found = false;
                 size_t i;
                 for (i = 0; i < vector_size(PROCESSES); i++) {
@@ -878,12 +883,28 @@ bool _handle_kill_child(char * command, vector * args) {
                 }
             }
 
+            _add_to_history(command);
             return true;
         }
     }
 
     return false;
 }
+
+// bool _handle_stop_child(char * command, vector * args) {
+//     if (vector_size(args) > 0) {
+//         char * cmd = vector_get(args, 0);
+
+//         if (strcmp(cmd, "stop") == 0) {
+//             if (vector_size(args) != 2) {
+//                 print_invalid_command(command);
+//             } else {
+
+//             }
+//         }
+//     }
+//     return false;
+// }
 
 process * _get_process(pid_t pid) {
     process * return_val = NULL;
