@@ -1,4 +1,7 @@
 cd ..
 ls
-sleep 2
+sleep
+!history
+#1
+!w
 echo Finished!

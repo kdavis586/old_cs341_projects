@@ -189,12 +189,6 @@ ssize_t _get_input(char ** buffer, size_t * size) {
 void _handle_get_input(ssize_t chars) {
     if (chars != -1) return;
 
-    if (errno != 0) {
-        // _get_input failed
-        _cleanup();
-        exit(1);
-    }
-
     // errno was 0 and chars == -1, EOF (Ctrl + D) was recieved
     _exit_success();
 }
@@ -540,6 +534,9 @@ bool _run_external(char * command) {
 
 // Run a general command.f
 void _run_command(char * command) {
+    if (RUN_SCRIPT) {
+        print_command(command);
+    }
     // Handle background processes
     _handle_background_processes(command);
     char * newline = strchr(command, '\n');
@@ -597,10 +594,6 @@ void _run_command(char * command) {
 
         if (commands) vector_destroy(commands);
         _add_to_history(command);
-    }
-
-    if (RUN_SCRIPT) {
-        print_command(command);
     }
 
     sstring_destroy(sstr_command);
@@ -818,39 +811,36 @@ char * _create_run_time_string(unsigned long utime, unsigned long stime) {
 }
 
 char * _create_start_time_string(unsigned long long start_time) {
-    // start_time /= sysconf(_SC_CLK_TCK); // now in seconds
+    FILE * fd;
+    if (!(fd = fopen("/proc/stat", "r"))) {
+        // should never go here
+        exit(2);
+    }
 
-    // // Get system uptime
-    // FILE * fd;
-    // if (!(fd = fopen("/proc/uptime", "r"))) {
-    //     // should never go here
-    //     exit(2);
-    // }
-    // unsigned long long uptime;
-    // fscanf(fd, "%llu %*llu", &uptime);
-    // fclose(fd);
+    unsigned long long btime = 0;
+    char buffer[100];
+    while (fgets(buffer, 100, fd)) {
+        sstring * sstr = cstr_to_sstring(buffer);
+        vector * split = sstring_split(sstr, ' ');
+        char * label = vector_get(split, 0);
+        if (strcmp(label, "btime") == 0) {
+            if (sscanf(vector_get(split, 1), "%llu", &btime) != 1) {
+                // should never go here
+                exit(2);
+            }
+            sstring_destroy(sstr);
+            vector_destroy(split);
+            break;
+        }
+        sstring_destroy(sstr);
+        vector_destroy(split);
+    }
 
-    // start_time += uptime;
-    // size_t start_hours = (size_t)(start_time / (60 * 60));
-    // size_t start_minutes = (size_t)(start_time / 60 % 60);
+    fclose(fd);
 
-    // // Allocate the right amount of space for the time string using snprintf
-    // int start_h_len = snprintf(NULL, 0, "%zu", start_hours);
-    // int start_m_len = snprintf(NULL, 0, "%zu", start_minutes);
-
-    // // allocate enough space for extra 0, :, and NUL (\0)
-    // size_t start_str_len = (start_h_len + start_m_len);
-    // char * start_str = malloc(start_str_len+ 3);
-    // if (start_minutes < 10) {
-    //     snprintf(start_str, start_str_len + 3, "%zu:0%zu", start_hours, start_minutes);
-    // } else {
-    //     snprintf(start_str, start_str_len + 2, "%zu:%zu", start_hours, start_minutes);
-    // }
-
-    time_t base_time;
+    time_t base_time = (time_t)(start_time / sysconf(_SC_CLK_TCK) + btime);
     struct tm * timeinfo;
 
-    time(&base_time);
     timeinfo = localtime(&base_time);
     int hours = timeinfo->tm_hour;
     int minutes = timeinfo->tm_min;
