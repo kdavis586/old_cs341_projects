@@ -60,6 +60,7 @@ bool _handle_kill_child(char * command, vector * args);
 process * _get_process(pid_t pid);
 bool _handle_stop_child(char * command, vector * args);
 bool _handle_continue_child(char * command, vector * args);
+void _handle_input_funct(char * input_command, char * file_path);
 
 // Globals that will be used for the duration of the shell
 static char * CWD; // Current working directory
@@ -74,6 +75,7 @@ static FILE * INPUT_STREAM; // Used to store the stream to read commands from
 static ssize_t CHARS_READ;
 static vector * PROCESSES;
 static int SET_STDOUT = -1;
+static int SET_STDIN = -1;
 
 /*
  *  MAIN SHELL FUNCTION
@@ -580,6 +582,12 @@ void _run_command(char * command) {
 
             _handle_output_append_funct(input_command, file_path, false);
             _add_to_history(command);
+        } else if ((commands = _get_commands(&command, "<"))) {
+            char * input_command = vector_get(commands, 0);
+            char * file_path = vector_get(commands, 1);
+
+            _handle_input_funct(input_command, file_path);
+            _add_to_history(command);
         } else {
             _run_external(command);
         }
@@ -847,6 +855,22 @@ void _handle_output_append_funct(char * input_command, char * file_path, bool ap
     fclose(fd);
     dup2(SET_STDOUT, 1);
     SET_STDOUT = -1;
+}
+
+void _handle_input_funct(char * input_command, char * file_path) {
+    SET_STDIN = dup(0);
+    close(0);
+
+    FILE * fd;
+    if (!(fd = fopen(file_path, "r"))) {
+        // should not go here
+        exit(2);
+    }
+
+    _run_external(input_command);
+    fclose(fd);
+    dup2(SET_STDIN, 0);
+    SET_STDIN = -1;
 }
 
 bool _handle_kill_child(char * command, vector * args) {
