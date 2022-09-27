@@ -581,19 +581,16 @@ void _run_command(char * command) {
             char * file_path = vector_get(commands, 1);
 
             _handle_output_append_funct(input_command, file_path, true);
-            _add_to_history(command);
         } else if ((commands = _get_commands(&command, ">"))) {
             char * input_command = vector_get(commands, 0);
             char * file_path = vector_get(commands, 1);
 
             _handle_output_append_funct(input_command, file_path, false);
-            _add_to_history(command);
         } else if ((commands = _get_commands(&command, "<"))) {
             char * input_command = vector_get(commands, 0);
             char * file_path = vector_get(commands, 1);
 
             _handle_input_funct(input_command, file_path);
-            _add_to_history(command);
         } else {
             _run_external(command);
         }
@@ -645,16 +642,15 @@ void _kill_foreground() {
 
 // Creates a process struct and stores it in PROCESSES
 void _create_process(pid_t pid, char * command, bool background) {
-    // create a copy of command to store
-    char * command_copy = strdup(command);
-
     process * new_process = (process *) malloc(sizeof(process));
     // TODO: Add some logic about process groups if the process is a background process
-    new_process->command = command_copy;
+    new_process->command = strdup(command);
     new_process->pid = pid;
     new_process->pinfo = malloc(sizeof(process_info));
+    new_process->pinfo->pid = pid;
     new_process->pinfo->start_str = NULL;
     new_process->pinfo->time_str = NULL;
+    new_process->pinfo->command = strdup(command);
     _populate_process_info(new_process);
 
     vector_push_back(PROCESSES, new_process);
@@ -753,7 +749,6 @@ void _populate_process_info(process * prcss) {
     // start time adjustment
     process_info * pinfo = prcss->pinfo;
 
-    if (!pinfo->pid) pinfo->pid = prcss->pid;
     pinfo->nthreads = nthreads;
     pinfo->vsize = virtual_size / 1024;
     pinfo->state = state;
@@ -764,7 +759,6 @@ void _populate_process_info(process * prcss) {
 
     free(pinfo->time_str);
     pinfo->time_str = time_str;
-    if (!pinfo->command) pinfo->command = strdup(prcss->command);
 }
 
 char * _get_proc_pid_path(process * prcss) {
