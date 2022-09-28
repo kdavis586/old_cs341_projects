@@ -17,8 +17,8 @@ void semm_init(Semamore *s, int value, int max_val) {
     /* Your code here */
     s->value = value;
     s->max_val = max_val;
-
-    
+    s->m =  PTHREAD_MUTEX_INITIALIZER;
+    s->cv = PTHREAD_MUTEX_INITIALIZER;
 }
 
 /**
@@ -45,4 +45,8 @@ void semm_post(Semamore *s) {
  */
 void semm_destroy(Semamore *s) {
     /* Your code here */
+    pthread_mutex_destroy(&(s->m));
+    pthread_cond_destroy(&(s->cv));
+    free(s);
+    s = NULL;
 }
