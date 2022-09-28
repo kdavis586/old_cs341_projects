@@ -17,8 +17,8 @@ void semm_init(Semamore *s, int value, int max_val) {
     /* Your code here */
     s->value = value;
     s->max_val = max_val;
-    s->m =  PTHREAD_MUTEX_INITIALIZER;
-    s->cv = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_init(&(s->m), NULL);
+    pthread_cond_init(&(s->cv), NULL);
 }
 
 /**
@@ -27,10 +27,13 @@ void semm_init(Semamore *s, int value, int max_val) {
  */
 void semm_wait(Semamore *s) {
     /* Your code here */
-    pthread_mutex_lock(&(s->m)); // avoid multiple threads reading same value
+     // avoid multiple threads reading same value
     while (s->value == 0) {
         pthread_cond_wait(&(s->cv), &(s->m));
-        s->value++; // is this safe?
+        
+        pthread_mutex_lock(&(s->m));
+        s->value--; // is this safe?
+        pthread_mutex_unlock(&(s->m));
     }
     pthread_cond_broadcast(&(s->cv));
     pthread_mutex_unlock(&(s->m));
@@ -43,6 +46,16 @@ void semm_wait(Semamore *s) {
  */
 void semm_post(Semamore *s) {
     /* Your code here */
+    pthread_mutex_lock(&(s->m)); // avoid multiple threads reading same value
+    while (s->value == s->max_val) {
+        pthread_cond_wait(&(s->cv), &(s->m));
+
+        pthread_mutex_lock(&(s->m)); // avoid multiple threads reading same value
+        s->value++;
+        pthread_mutex_unlock(&(s->m)); // avoid multiple threads reading same value
+    }
+    pthread_cond_broadcast(&(s->cv));
+    pthread_mutex_unlock(&(s->m));
 }
 
 /**
@@ -54,6 +67,4 @@ void semm_destroy(Semamore *s) {
     /* Your code here */
     pthread_mutex_destroy(&(s->m));
     pthread_cond_destroy(&(s->cv));
-    free(s);
-    s = NULL;
 }
