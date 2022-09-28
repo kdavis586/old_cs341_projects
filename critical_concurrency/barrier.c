@@ -42,8 +42,8 @@ int barrier_wait(barrier_t *barrier) {
     if (barrier->count == 2 * barrier->n_threads) {
         barrier->count = 0;
         barrier->times_used++;
+        pthread_cond_broadcast(&(barrier->cv));
     }
-    pthread_cond_broadcast(&(barrier->cv));
     pthread_mutex_unlock(&(barrier->mtx));
 
     
