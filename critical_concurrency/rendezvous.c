@@ -42,7 +42,9 @@ int main(int argc, char **argv) {
     free(quote_A);
 
     // Destroy your semaphores
-
+    sem_destroy(&sem_a);
+    sem_destroy(&sem_b);
+    
     return 0;
 }
 

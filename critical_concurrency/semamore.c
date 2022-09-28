@@ -15,6 +15,10 @@
  */
 void semm_init(Semamore *s, int value, int max_val) {
     /* Your code here */
+    s->value = value;
+    s->max_val = max_val;
+
+    
 }
 
 /**
