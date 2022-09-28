@@ -7,14 +7,71 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <string.h>
 
 #include "queue.h"
 
-int main(int argc, char **argv) {
-    if (argc != 3) {
-        printf("usage: %s test_number return_code\n", argv[0]);
-        exit(1);
+
+void * no_bound_push(void * arg) {
+    queue * q = (queue *) arg;
+    size_t i;
+    for (i = 0; i < 10; i++) {
+        char * hi = malloc(3);
+        strcpy(hi, "hi");
+        queue_push(q, hi);
     }
-    printf("Please write tests cases\n");
+    return NULL;
+}
+
+void * bound_push(void * arg) {
+    queue * q = (queue *) arg;
+    char * hi = malloc(3);
+    strcpy(hi, "hi");
+    queue_push(q, hi);
+    return NULL;
+}
+
+void * bound_pull(void * arg) {
+    queue * q = (queue *) arg;
+    void * output = queue_pull(q);
+    free(output);
+    return NULL;
+}
+
+int main(int argc, char **argv) {
+    // if (argc != 3) {
+    //     printf("usage: %s test_number return_code\n", argv[0]);
+    //     exit(1);
+    // }
+    
+    // queue with no bound
+    queue * q = queue_create(-1);
+    pthread_t no_bound_tids[5];
+    size_t i;
+    for (i = 0; i < 5; i++) {
+        pthread_create(no_bound_tids + i, NULL, no_bound_push, q);
+    }
+    for (i = 0; i < 5; i++) {
+        pthread_join(no_bound_tids[i], NULL);
+    }
+    queue_destroy(q);
+
+    // queue bound test
+    q = queue_create(1);
+    pthread_t bound_tids[4];
+    for (i = 0; i < 4; i++) {
+        void * (*func)(void*) = NULL;
+        if (i % 2 == 0) {
+            func = bound_pull;
+        } else {
+            func = bound_push;
+        }
+
+        pthread_create(bound_tids + i, NULL, func, q);
+    }
+    for (i = 0; i < 4; i++) {
+        pthread_join(bound_tids[i], NULL);
+    }
+    queue_destroy(q);
     return 0;
 }
