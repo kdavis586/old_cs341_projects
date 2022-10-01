@@ -58,6 +58,9 @@ void queue_destroy(queue *this) {
         
         pthread_mutex_destroy(&(this->m));
         pthread_cond_destroy(&(this->cv));
+
+        free(this);
+        this = NULL;
     }
 }
 
