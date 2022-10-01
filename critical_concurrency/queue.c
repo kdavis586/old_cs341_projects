@@ -65,7 +65,7 @@ void queue_destroy(queue *this) {
 void queue_push(queue *this, void *data) {
     /* Your code here */
     pthread_mutex_lock(&(this->m));
-    if (this->max_size >= 0) {
+    if (this->max_size > 0) {
         while (this->size == this->max_size) {
             pthread_cond_wait(&(this->cv), &(this->m));
         }
