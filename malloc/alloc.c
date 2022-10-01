@@ -6,16 +6,27 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <bool.h>
+#include <stdbool.h>
 
-static mem_tag * head;
+typedef struct _meta meta;
+typedef struct _tag tag; 
 
-/** Struct that acts as node in list keeping track of allocated space **/
-typedef struct mem_tag {
+struct _tag {
+    meta * self_meta;
+    meta * next;
+};
+
+struct _meta {
     size_t size;
     bool allocated;
-    mem_tag * next;
-} mem_tag;
+    tag * self_tag;
+    tag * prev_tag;
+};
+
+
+
+// GLOBALS
+static meta * HEAD;               // Starting point to all the different chunks of allocated memory
 
 /**
  * Allocate space for array in memory
@@ -70,29 +81,30 @@ void *malloc(size_t size) {
     // implement malloc!
     
     // Current strategy, avoid calling sbrk every time, allocate the nearest power of 2 for size
-    size_t alloc_size = _get_greater_power_two(size);
+    // size_t alloc_size = _get_greater_power_two(size);
+    // size_t alignment_size = (alloc_size + 2 * sizeofj(mem_tag) + 15) / 16;
+    // // Since we are always getting a power of two that is greater than the input size, we wil have an extra block of free memory
+    // // Allocate enough space for the alloc_size, and two mem_tags
 
-    // Since we are always getting a power of two that is greater than the input size, we wil have an extra block of free memory
-    // Allocate enough space for the alloc_size, and two mem_tags
+    // void * data_start = sbrk(alloc_size + 2 * sizeof(mem_tag));
+    // if ((int) data_start == -1) {
+    //     // sbrk failed which, in turn, means our malloc failed, return NULL.
+    //     return NULL;
+    // }
 
-    void * data_start = sbrk(alloc_size + 2 * sizeof(mem_tag));
-    if ((int) data_start == -1) {
-        // sbrk failed which, in turn, means our malloc failed, return NULL.
-        return NULL;
-    }
-
-    mem_tag * alloc_tag = (mem_tag *) data_start;
-    alloc_tag->size = size;
-    alloc_tag->allocated = true;
-    alloc_tag->next = head;
+    // mem_tag * alloc_tag = (mem_tag *) data_start;
+    // alloc_tag->size = size;
+    // alloc_tag->allocated = true;
+    // alloc_tag->next = HEAD;
     
-    mem_tag * free_tag = (mem_tag *) (data_start + sizeof(mem_tag) + size);
-    free_tag->size = alloc_size - size - 2 * sizeof(mem_tag);
-    free_tag->allocated = false;
-    free_tag->next = alloc_tag;
-    head = free_tag;
+    // mem_tag * free_tag = (mem_tag *) (data_start + sizeof(mem_tag) + size);
+    // free_tag->size = alloc_size - size - 2 * sizeof(mem_tag);
+    // free_tag->allocated = false;
+    // free_tag->next = alloc_tag;
+    // HEAD = free_tag;
 
-    return (void *) alloc_tag + sizeof(mem_tag);
+    // return (void *) alloc_tag + sizeof(mem_tag);
+    return NULL;
 }
 
 /**
@@ -113,6 +125,54 @@ void *malloc(size_t size) {
  */
 void free(void *ptr) {
     // implement free!
+    if (!ptr) return; // Do nothing on NULL pointer.
+
+    meta * to_search = (meta *) (ptr - sizeof(meta));
+    meta * itr = HEAD;
+
+    while (itr) {
+        if (itr == to_search) {
+            // Handle up to double coalesce
+
+            // First things first, make self section available for allocation
+            itr->allocated = false;
+
+            //                                   if itr is not the HEAD, then there has to be a previous meta tag...
+            if (itr != HEAD && !itr->prev_tag->self_meta->allocated) {
+                // coalesce with the data behind
+
+                // Get the meta tag of previous block of memory
+                meta * prev_meta = itr->prev_tag->self_meta;
+
+                // Set the new end tag of the coalesced block
+                prev_meta->self_tag = itr->self_tag;
+
+                // Set the new space available of the coalesced block
+                prev_meta->size += (sizeof(tag) + sizeof(meta) + itr->size);
+
+                // Set itr to the prev_meta, so code below will have proper reference to work with
+                itr = prev_meta;
+            }
+
+            if (itr->self_tag->next && !itr->self_tag->next->allocated) {
+                // coalsce with the data aHEAD
+
+                // Get the meta tag of the next block of memory
+                meta * next_meta = itr->self_tag->next;
+                
+                // Set the new end tag of the coalesced block
+                itr->self_tag = next_meta->self_tag;
+
+                // Set the new space available of the coalesced block
+                itr->size += (sizeof(tag) + sizeof(meta) + next_meta->size);
+            }
+
+            // No need to continue the while loop
+            break;
+        }
+
+        itr = itr->self_tag->next;
+    }
 }
 
 /**
