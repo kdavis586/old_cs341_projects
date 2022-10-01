@@ -6,6 +6,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <bool.h>
+
+static mem_tag * head;
+
+/** Struct that acts as node in list keeping track of allocated space **/
+typedef struct mem_tag {
+    size_t size;
+    bool allocated;
+    mem_tag * next;
+} mem_tag;
 
 /**
  * Allocate space for array in memory
@@ -58,7 +68,31 @@ void *calloc(size_t num, size_t size) {
  */
 void *malloc(size_t size) {
     // implement malloc!
-    return NULL;
+    
+    // Current strategy, avoid calling sbrk every time, allocate the nearest power of 2 for size
+    size_t alloc_size = _get_greater_power_two(size);
+
+    // Since we are always getting a power of two that is greater than the input size, we wil have an extra block of free memory
+    // Allocate enough space for the alloc_size, and two mem_tags
+
+    void * data_start = sbrk(alloc_size + 2 * sizeof(mem_tag));
+    if ((int) data_start == -1) {
+        // sbrk failed which, in turn, means our malloc failed, return NULL.
+        return NULL;
+    }
+
+    mem_tag * alloc_tag = (mem_tag *) data_start;
+    alloc_tag->size = size;
+    alloc_tag->allocated = true;
+    alloc_tag->next = head;
+    
+    mem_tag * free_tag = (mem_tag *) (data_start + sizeof(mem_tag) + size);
+    free_tag->size = alloc_size - size - 2 * sizeof(mem_tag);
+    free_tag->allocated = false;
+    free_tag->next = alloc_tag;
+    head = free_tag;
+
+    return (void *) alloc_tag + sizeof(mem_tag);
 }
 
 /**
@@ -129,4 +163,23 @@ void free(void *ptr) {
 void *realloc(void *ptr, size_t size) {
     // implement realloc!
     return NULL;
+}
+
+/**
+* Gets the power of two that is stricly greater thant the input size
+*
+* @param size
+*   The size that we want to get a greater power of two of.
+*
+* @return
+*   A size_t reprenting the power of 2 that is explicitly greater than the input size.
+*/
+size_t _get_greater_power_two(const size_t size) {
+    size_t power = 1;
+
+    while (power <= size) {
+        power *= 2;
+    }
+
+    return power;
 }
