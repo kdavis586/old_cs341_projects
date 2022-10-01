@@ -51,14 +51,13 @@ void queue_destroy(queue *this) {
     if (this) {
         queue_node * cur = this->head;
         while (cur) {
-            free(cur->data);
             queue_node * temp = cur;
             cur = cur->next;
             free(temp);
         }
-        // TODO: Maybe free queue "this" as well
-        free(this);
-        this = NULL;
+        
+        pthread_mutex_destroy(&(this->m));
+        pthread_cond_destroy(&(this->cv));
     }
 }
 

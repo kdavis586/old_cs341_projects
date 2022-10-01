@@ -16,25 +16,20 @@ void * no_bound_push(void * arg) {
     queue * q = (queue *) arg;
     size_t i;
     for (i = 0; i < 10; i++) {
-        char * hi = malloc(3);
-        strcpy(hi, "hi");
-        queue_push(q, hi);
+        queue_push(q, NULL);
     }
     return NULL;
 }
 
 void * bound_push(void * arg) {
     queue * q = (queue *) arg;
-    char * hi = malloc(3);
-    strcpy(hi, "hi");
-    queue_push(q, hi);
+    queue_push(q, NULL);
     return NULL;
 }
 
 void * bound_pull(void * arg) {
     queue * q = (queue *) arg;
-    void * output = queue_pull(q);
-    free(output);
+    queue_pull(q);
     return NULL;
 }
 
@@ -55,7 +50,7 @@ int main(int argc, char **argv) {
         pthread_join(no_bound_tids[i], NULL);
     }
     queue_destroy(q);
-
+    free(q);
     // queue bound test
     q = queue_create(1);
     pthread_t bound_tids[4];
@@ -72,6 +67,8 @@ int main(int argc, char **argv) {
     for (i = 0; i < 4; i++) {
         pthread_join(bound_tids[i], NULL);
     }
+    queue_push(q, "hi");
     queue_destroy(q);
+    free(q);
     return 0;
 }
