@@ -53,7 +53,14 @@ static meta * HEAD;               // Starting point to all the different chunks 
  */
 void *calloc(size_t num, size_t size) {
     // implement calloc!
-    return NULL;
+    void * memory;
+
+    if (!(memory = malloc(num * size))) {
+        return NULL;
+    }
+
+    memcpy(memory, 0, num * size);
+    return memory;
 }
 
 /**
