@@ -26,7 +26,7 @@ struct _meta {
 
 
 // GLOBALS
-static meta * HEAD;               // Starting point to all the different chunks of allocated memory
+static meta * HEAD; // Starting point to all the different chunks of allocated memory
 
 /**
  * Allocate space for array in memory
@@ -62,6 +62,7 @@ void *calloc(size_t num, size_t size) {
     memcpy(memory, 0, num * size);
     return memory;
 }
+
 
 /**
  * Allocate memory block
@@ -123,7 +124,7 @@ void *malloc(size_t size) {
     tag * new_tag = data_start + sizeof(meta) + alignment_size;
 
     new_block->size = alignment_size;
-    new_block->allocated = false;
+    new_block->allocated = true;
     new_block->self_tag = new_tag;
     
     new_tag->self_meta = new_block;
@@ -132,11 +133,12 @@ void *malloc(size_t size) {
     HEAD = new_block;
 
     if (_split_block(new_block, size) {
-        _coalesce_right(split_meta);
+        _coalesce_right(new_block->self_tag->next);
     }
 
     return (void *) new_block + sizeof(meta);
 }
+
 
 /**
  * Deallocate space in memory
@@ -178,6 +180,7 @@ void free(void *ptr) {
         itr = itr->self_tag->next;
     }
 }
+
 
 /**
  * Reallocate memory block
@@ -225,9 +228,34 @@ void free(void *ptr) {
  * @see http://www.cplusplus.com/reference/clibrary/cstdlib/realloc/
  */
 void *realloc(void *ptr, size_t size) {
-    // implement realloc!
-    return NULL;
+    void * return_ptr;
+
+    if (!size) {
+        free(ptr);
+        return_ptr =  NULL;
+    } else if (!ptr) {
+        return_ptr = malloc(size);
+    } else if (ptr->size == size) {
+        return ptr;
+    } else if (ptr->size < size) {
+        if (_split_block(ptr, size)) {
+            _coalesce_right(ptr->self_tag->next);
+        }
+
+        // Should I actually do something here?
+    } else {
+        // ptr-size will always be > size here
+        return_ptr = malloc(size);
+        if (return_ptr) {
+            meta * mta = ptr - sizeof(meta);
+            memcpy(return_ptr, ptr, mta->size);
+            free(ptr);
+        }
+    }
+
+    return return_ptr;
 }
+
 
 /**
 * Gets the power of two that is stricly greater thant the input size
