@@ -19,7 +19,7 @@ void *reduce(void *ptr, int size) {
 
         ptr1 = reduce(ptr1, size / 2);
         ptr2 = reduce(ptr2, size / 2);
-
+        //fprintf(stderr, "Expected: %d, ptr1 val: %d, ptr2 val: %d\n", size / 2, *((int *)ptr1), *((int *)ptr2));
         if (*((int *)ptr1) != size / 2 || *((int *)ptr2) != size / 2) {
             fprintf(stderr, "Memory failed to contain correct data after many "
                             "allocations!\n");
