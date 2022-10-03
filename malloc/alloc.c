@@ -239,6 +239,9 @@ void _coalesce(meta * mta) {
                 TAIL = mta;
             }
             mta->next = mta->next->next;
+            if (mta->next) {
+                mta->next->prev = mta;
+            }
         }
 
         if (mta->next && !mta->next->allocated) {
@@ -247,6 +250,9 @@ void _coalesce(meta * mta) {
                 TAIL = mta;
             }
             mta->next = mta->next->next;
+            if (mta->next) {
+                mta->next->prev = mta;
+            }
         }
     }
     _print_match(mta);
@@ -262,6 +268,9 @@ bool _split_set(meta * mta, size_t alloc_size) {
         unalloc_meta->size = mta->size - alloc_size - sizeof(meta);
         unalloc_meta->allocated = false;
         unalloc_meta->next = mta->next;
+        if (unalloc_meta->next) {
+            unalloc_meta->next->prev = unalloc_meta;
+        }
         unalloc_meta->prev = mta;
         if (mta == TAIL) {
             TAIL = unalloc_meta;
