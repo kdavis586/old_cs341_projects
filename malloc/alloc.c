@@ -234,7 +234,7 @@ void *realloc(void *ptr, size_t size) {
                 void * src = (void *)ptr_meta + sizeof(meta);
                 memcpy(dest, src, size);
                 _coalesce_left(ptr_meta);
-                return_ptr = (void *)(ptr_meta->next) + sizeof(meta);
+                return_ptr = (void *)(ptr_meta->next) + sizeof(meta); // TODO: ptr_meta gets changed  on the previous line, this does not get the reallocated tag  (maybe, think about this more)
             }
 
             // Should I actually do something here?
