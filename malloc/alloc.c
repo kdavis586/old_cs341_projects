@@ -95,7 +95,6 @@ void *malloc(size_t size) {
                 _coalesce_left(itr);
                 return_addr = (void *)(itr->next) + sizeof(meta);
             }
-
             return return_addr;
         }
 
@@ -155,10 +154,8 @@ void *malloc(size_t size) {
  */
 void free(void *ptr) {
     if (!ptr) return; // Do nothing on NULL pointer.
-    
     meta * mta = ptr - sizeof(meta);
     mta->allocated = false;
-
     // Coalesce if needed
     _coalesce_left(mta);
     _coalesce_right(mta);
@@ -213,39 +210,25 @@ void free(void *ptr) {
 void *realloc(void *ptr, size_t size) {
     void * return_ptr = NULL;
     if (!size) {
-        // Free if size is 0
         free(ptr);
-        return_ptr =  NULL;
-    } else if (!ptr) {
-        // malloc if ptr is NULL
-        return_ptr = malloc(size);
-    } else {
-        // Everything else
-        meta * ptr_meta = (meta *)(ptr - sizeof(meta));
+        return NULL;
+    } 
+    
+    if (!ptr) {
+        return malloc(size);
+    }
 
-        if (ptr_meta->size == size) {
-            // Do nothing is size is the same as current size
-            return_ptr = ptr;
-        } else if (ptr_meta->size > size) {
-            // TODO: Need to ensure data is copied when splitting block
-            return_ptr = ptr;
-            if (_split_set(ptr_meta, size)) {
-                void * dest = (void *)(ptr_meta->next) + sizeof(meta);
-                void * src = (void *)ptr_meta + sizeof(meta);
-                memcpy(dest, src, size);
-                _coalesce_left(ptr_meta);
-                return_ptr = (void *)(ptr_meta->next) + sizeof(meta); // TODO: ptr_meta gets changed  on the previous line, this does not get the reallocated tag  (maybe, think about this more)
-            }
+    meta * ptr_meta = (meta *)(ptr - sizeof(meta));
+    if (ptr_meta->size >= size) {
+        // Do nothing is size is the same as current size
+        return ptr;
+    }
 
-            // Should I actually do something here?
-        } else {
-            // ptr-size will always be < size here
-            return_ptr = malloc(size);
-            if (return_ptr) {
-                memcpy(return_ptr, ptr, ptr_meta->size);
-                free(ptr);
-            }
-        }
+    return_ptr = malloc(size);
+    if (return_ptr) {
+        meta * return_meta = return_ptr - sizeof(meta);
+        memcpy(return_ptr, ptr, ptr_meta->size);
+        free(ptr);
     }
     return return_ptr;
 }

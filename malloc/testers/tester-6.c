@@ -11,16 +11,11 @@ void *malloc_and_break(void *region, int c, size_t len) {
     if (len < MIN_ALLOC_SIZE) {
         return region;
     }
-    fprintf(stderr, "Finished a11\n");
     void *sr1 = realloc(region, len / 3);
-    fprintf(stderr, "Finished a12\n");
     void *sr2 = malloc(len / 3);
-    fprintf(stderr, "Finished a13\n");
     void *sr3 = malloc(len / 3);
-    fprintf(stderr, "Finished a1\n");
     verify_overlap3(sr1, sr2, sr3, len / 3);
     verify(sr1, c, len / 3);
-    fprintf(stderr, "Finished a2\n");
     memset(sr1, 0xab, len / 3);
     memset(sr2, 0xcd, len / 3);
     memset(sr3, 0xef, len / 3);
@@ -28,7 +23,6 @@ void *malloc_and_break(void *region, int c, size_t len) {
 
     sr1 = malloc_and_break(sr1, 0xab, len / 3);
     sr3 = malloc_and_break(sr3, 0xef, len / 3);
-    fprintf(stderr, "Finished b\n"); 
     sr1 = realloc(sr1, len / 2);
     sr3 = realloc(sr3, len / 2);
 
@@ -37,7 +31,6 @@ void *malloc_and_break(void *region, int c, size_t len) {
 
     memset(sr1, 0xab, len / 2);
     memset(sr3, 0xef, len / 2);
-    fprintf(stderr, "Finished c\n");
     verify_overlap2(sr1, sr3, len / 2);
     free(sr3);
 
@@ -46,7 +39,6 @@ void *malloc_and_break(void *region, int c, size_t len) {
 
     memset(sr1, c, len);
 
-    fprintf(stderr, "Finished d\n");
     return sr1;
 }
 
