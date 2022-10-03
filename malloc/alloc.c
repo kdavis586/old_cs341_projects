@@ -9,24 +9,23 @@
 #include <stdbool.h>
 
 typedef struct _meta meta;
-typedef struct _tag tag; 
-
-struct _tag {
-    meta * self_meta;
-    meta * next;
-};
 
 struct _meta {
     size_t size;
     bool allocated;
-    tag * self_tag;
-    tag * prev_tag;
+    meta * next;
+    meta * prev;
 };
 
-
+// Forward declarations of helper functions
+size_t _get_greater_power_two(const size_t size);
+void _coalesce_left(meta * mta);
+void _coalesce_right(meta * mta);
+bool _split_set(meta * mta, size_t alloc_size);
 
 // GLOBALS
 static meta * HEAD; // Starting point to all the different chunks of allocated memory
+static size_t SBRK_GROW = 1;
 
 /**
  * Allocate space for array in memory
@@ -59,7 +58,7 @@ void *calloc(size_t num, size_t size) {
         return NULL;
     }
 
-    memcpy(memory, 0, num * size);
+    memset(memory, 0, num * size);
     return memory;
 }
 
@@ -87,34 +86,36 @@ void *calloc(size_t num, size_t size) {
  */
 void *malloc(size_t size) {
     // See if we have space in the currently allocated memory
+    fprintf(stderr, "MALLOC DESIRED SIZE: %zu\n", size);
     meta * itr = HEAD;
     while (itr) {   
+        fprintf(stderr, "Looking at %p with space %zu\n", itr, itr->size);
         if (!itr->allocated && (itr->size >= size)) {
+            fprintf(stderr, "\tFOUND A SPACE\n");
             // Enough for allocation, check if can split block
 
-            if (_split_block(itr, size)) {
-                // Enough space for data about remaining block, create new link
-                // Potentially coalesce new split with neighbor is free
-                _coalesce_right(split_meta);
-            } else {
-                itr->allocated = true;
+            void * return_addr = (void *) itr + sizeof(meta);
+            if (_split_set(itr, size)) {
+                _coalesce_left(itr);
+                return_addr = (void *)(itr->self_tag->next_meta) + sizeof(meta);
             }
-
+            fprintf(stderr, "-------------------------------\n");
             return (void *) itr + sizeof(meta);
         }
-        itr = itr->self_tag->next;
+        itr = itr->next;
     }
-
+    
     // No existing blocks have enough space, call sbrk
 
     // Current strategy, avoid calling sbrk every time, allocate the nearest power of 2 for size
-    size_t alloc_size = _get_greater_power_two(size);
-    size_t alignment_size = (alloc_size + 2 * sizeof(mem_tag) + 15) / 16; // Data should be aligned
+    size_t alloc_size = (SBRK_GROW > size) ? SBRK_GROW : size;
+    SBRK_GROW *= 2;
+    size_t alignment_size = ((alloc_size + 2 * (sizeof(meta) + sizeof(tag)) + 15) / 16) * 16; // Data should be aligned
 
     // Since we are always getting a power of two that is greater than the input size, we wil have an extra block of free memory
     // Allocate enough space for the alloc_size, and two mem_tags
-
-    void * data_start = sbrk(alignment_size + (sizeof(meta) + sizeof(tag));
+    fprintf(stderr, "\t\t\tMALLOC: Extending by %zu\n", alignment_size);
+    void * data_start = sbrk(alignment_size);
     if ((int) data_start == -1) {
         // sbrk failed which, in turn, means our malloc failed, return NULL.
         return NULL;
@@ -128,13 +129,14 @@ void *malloc(size_t size) {
     new_block->self_tag = new_tag;
     
     new_tag->self_meta = new_block;
-    new_tag->next = HEAD;
+    new_tag->next_meta = HEAD;
+
+    if (HEAD) {
+        HEAD->prev_tag = new_tag;
+    }
 
     HEAD = new_block;
-
-    if (_split_block(new_block, size) {
-        _coalesce_right(new_block->self_tag->next);
-    }
+    _split_set(new_block, size);
 
     return (void *) new_block + sizeof(meta);
 }
@@ -177,7 +179,7 @@ void free(void *ptr) {
             break;
         }
 
-        itr = itr->self_tag->next;
+        itr = itr->self_tag->next_meta;
     }
 }
 
@@ -228,28 +230,34 @@ void free(void *ptr) {
  * @see http://www.cplusplus.com/reference/clibrary/cstdlib/realloc/
  */
 void *realloc(void *ptr, size_t size) {
-    void * return_ptr;
-
+    void * return_ptr = NULL;
     if (!size) {
+        // Free if size is 0
         free(ptr);
         return_ptr =  NULL;
     } else if (!ptr) {
+        // malloc if ptr is NULL
         return_ptr = malloc(size);
-    } else if (ptr->size == size) {
-        return ptr;
-    } else if (ptr->size < size) {
-        if (_split_block(ptr, size)) {
-            _coalesce_right(ptr->self_tag->next);
-        }
-
-        // Should I actually do something here?
     } else {
-        // ptr-size will always be > size here
-        return_ptr = malloc(size);
-        if (return_ptr) {
-            meta * mta = ptr - sizeof(meta);
-            memcpy(return_ptr, ptr, mta->size);
-            free(ptr);
+        // Everything else
+        meta * ptr_meta = (meta *)(ptr - sizeof(meta));
+
+        if (ptr_meta->size == size) {
+            // Do nothing is size is the same as current size
+            return ptr;
+        } else if (ptr_meta->size < size) {
+            if (_split_set(ptr_meta, size)) {
+                _coalesce_left(ptr_meta);
+            }
+
+            // Should I actually do something here?
+        } else {
+            // ptr-size will always be > size here
+            return_ptr = malloc(size);
+            if (return_ptr) {
+                memcpy(return_ptr, ptr, ptr_meta->size);
+                free(ptr);
+            }
         }
     }
 
@@ -277,26 +285,30 @@ size_t _get_greater_power_two(const size_t size) {
 }
 
 void _coalesce_left(meta * mta) {
-    if (mta != HEAD && !mta->prev_tag->self_meta->allocated) {
+    if (mta != HEAD && !mta->prev_tag) {
         // coalesce with the data behind
 
         // Get the meta tag of previous block of memory
+        fprintf(stderr, "_coalesce_left: [1]\n");
         meta * prev_meta = mta->prev_tag->self_meta;
 
         // Set the new end tag of the coalesced block
+        fprintf(stderr, "_coalesce_left: [2]\n");
         prev_meta->self_tag = mta->self_tag;
 
+        fprintf(stderr, "_coalesce_left: [3]\n");
         // Set the new space available of the coalesced block
         prev_meta->size += (sizeof(tag) + sizeof(meta) + mta->size);
+        fprintf(stderr, "_coalesce_left: [SUCCESS]\n");
     }
 }
 
 void _coalesce_right(meta * mta) {
-    if (mta->self_tag->next && !mta->self_tag->next->allocated) {
+    if (mta->self_tag->next_meta && !mta->self_tag->next_meta->allocated) {
         // coalsce with the data ahead
 
         // Get the meta tag of the next block of memory
-        meta * next_meta = mta->self_tag->next;
+        meta * next_meta = mta->self_tag->next_meta;
         
         // Set the new end tag of the coalesced block
         mta->self_tag = next_meta->self_tag;
@@ -308,27 +320,34 @@ void _coalesce_right(meta * mta) {
 
 
 // Splits the block pointed to at meta into two differenct blocks and allocates mta
-bool _split_block(meta * mta, size_t alloc_size) {
-    if (mta->size - size >= sizeof(meta) + sizeof(tag)) {
-        tag * alloc_tag = (void *) mta + sizeof(meta) + alloc_size;
-        meta * split_meta = (void *) alloc_tag + sizeof(tag);
+bool _split_set(meta * mta, size_t alloc_size) { 
+    fprintf(stderr, "Original Size: %zu\n", mta->size);
+    if (mta->size >= alloc_size + sizeof(meta) + sizeof(tag)) {
+        tag * alloc_tag = mta->self_tag;
+        meta * alloc_meta = (meta *) ((void *)alloc_tag - alloc_size - sizeof(meta));
 
-        // Assign split block meta and tag
-        split_meta->size = mta->size - alloc_size - sizeof(tag) - sizeof(meta);
-        split_meta->allocated = false;
-        split_meta->self_tag = mta->self_tag;
-        split_meta->self_tag->self_meta = split_meta;
-        split_meta->prev_tag = alloc_tag;
-        
-        // Assign new mta values
-        mta->size = alloc_size;
-        mta->allocated = true;
-        mta->self_tag = alloc_tag;
-        mta->self_tag->self_meta = mta;
-        mta->self_tag->next = split_meta;
+        meta * unalloc_meta = mta;
+        unalloc_meta->size = unalloc_meta->size - (sizeof(tag) + sizeof(meta) + alloc_size);
+        tag * unalloc_tag = (tag *)(unalloc_meta + sizeof(meta) + unalloc_meta->size);
+        // Set alloc data
+        alloc_tag->self_meta = alloc_meta;
+        alloc_meta->size = alloc_size;
+        alloc_meta->allocated = true;
+        alloc_meta->self_tag = alloc_tag;
+        alloc_meta->prev_tag = unalloc_tag;
+        // Set unalloc data
+        unalloc_tag->self_meta = unalloc_meta;
+        unalloc_tag->next_meta = alloc_meta;
 
+        unalloc_meta->allocated = false;
+        unalloc_meta->self_tag = unalloc_tag;
+
+        fprintf(stderr, "unalloc size: %zu, alloc size: %zu\n", unalloc_meta->size, alloc_meta->size);
+        fprintf(stderr, "_split_set succeeded!\n");
         return true;
     }
 
+    mta->allocated = true;
+    fprintf(stderr, "_split_set did nothing!\n");
     return false;
 }
