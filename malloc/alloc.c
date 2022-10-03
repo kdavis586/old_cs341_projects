@@ -226,7 +226,6 @@ void *realloc(void *ptr, size_t size) {
 
     return_ptr = malloc(size);
     if (return_ptr) {
-        meta * return_meta = return_ptr - sizeof(meta);
         memcpy(return_ptr, ptr, ptr_meta->size);
         free(ptr);
     }
