@@ -216,6 +216,7 @@ void *realloc(void *ptr, size_t size) {
     meta * ptr_meta = (meta *)(ptr - sizeof(meta));
     if (ptr_meta->size >= size) {
         // Have enough space in current area, do nothing
+        _split_set(ptr_meta, size);
         return ptr;
     }
 
