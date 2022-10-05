@@ -5,13 +5,33 @@
 #include "graph.h"
 #include "libdrm.h"
 #include "set.h"
+#include <limits.h>
 #include <pthread.h>
 
-struct drm_t {};
+static graph * g;
+static int id = 0;
+
+struct drm_t {
+
+};
 
 drm_t *drm_init() {
     /* Your code here */
-    return NULL;
+    if (!g) {
+        g = shallow_graph_create();
+    }
+
+    drm_t * new_drm = (drm_t *) malloc(sizeof(drm_t));
+    if (!new_drm) {
+        // Malloc failed
+        return NULL;
+    }
+
+    // Add any drm_t value init here...
+
+    
+    graph_add_vertex(g, new_drm);
+    return new_drm;
 }
 
 int drm_post(drm_t *drm, pthread_t *thread_id) {
