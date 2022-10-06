@@ -48,7 +48,8 @@ int drm_post(drm_t *drm, pthread_t *thread_id) {
     int retval = 0;
     pthread_mutex_lock(&(drm->lock));
     pthread_mutex_lock(&graph_lock);
-    if (graph_contains_vertex(g, thread_id)) {
+    if (graph_contains_vertex(g, thread_id) && \
+        graph_contains_vertex(g, drm) && graph_adjacent(g, drm, thread_id)) {
         graph_remove_edge(g, drm, thread_id);
         drm->in_use = false;
         pthread_cond_signal(&(drm->cv)); // Wake next waiting thread
@@ -86,17 +87,15 @@ int drm_wait(drm_t *drm, pthread_t *thread_id) {
             pthread_mutex_lock(&graph_lock);
             graph_remove_edge(g, thread_id, drm); // thread now has the resource, change edge direction
             graph_add_edge(g, drm, thread_id);
-            pthread_mutex_unlock(&graph_lock);
             retval = 1; 
         }
     } else {
         // drm is not in use, no worry about deadlock
         graph_add_edge(g, drm, thread_id);
-            pthread_mutex_unlock(&graph_lock);
         drm->in_use = true;
         retval = 1;
     }
-
+    pthread_mutex_unlock(&graph_lock);
     pthread_mutex_unlock(&(drm->lock));
     return retval;
 }
