@@ -71,7 +71,7 @@ int drm_wait(drm_t *drm, pthread_t *thread_id) {
         // drm is currently in use, are we allowed to wait without causing deadlock?
         graph_add_edge(g, thread_id, drm);
 
-        if (_cycle_present(g)) {
+        if (_cycle_present(g, thread_id)) {
             graph_remove_edge(g, thread_id, drm);
             retval = 0;
         } else {
@@ -124,7 +124,35 @@ void drm_destroy(drm_t *drm) {
     return;
 }
 
-// Returns true if there is a cycle, false otherwise
-bool _cycle_present(graph * g) {
-    // TODO: Implement this...
+// Returns true if there is a cycle, false otherwise. NOT THREAD SAFE
+bool _cycle_present(graph * g, pthread_t * thread_id) {
+    // BFS on graph, no cross edges so we can do niave directed BFS
+    queue * q = queue_create(graph_vertex_count(g));
+    set * shallow_set_create();
+
+    // Setup queue
+    bool cycle = false;
+    size_t q_size = 1;
+    queue_push(q, thread_id);
+
+    while (q_size) {
+        void * key = queue_pull(q);
+        q_size--;
+
+        if (set_contains(q, key)) {
+            cycle = true;
+            break;
+        }
+
+        vector * dir_neighbors = graph_neighbors(g, key);
+        VECTOR_FOR_EACH(dir_neighbors, neighbor, {
+            queue_push(q, neighbor);
+            q_size++;
+        });
+        vector_destroy(dir_neighbors);
+    }
+
+    queue_destroy(q);
+    set_destroy(set);
+    return cycle;
 }
