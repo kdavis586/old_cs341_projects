@@ -5,15 +5,19 @@
 #include "graph.h"
 #include "libdrm.h"
 #include "set.h"
+#include "queue.h"
+#include "vector.h"
 #include <pthread.h>
+#include <stdio.h>
 
-static pthread_mutex_t graph_lock;
+bool _cycle_present(graph * g, pthread_t * thread_id);
+
+static pthread_mutex_t graph_lock = PTHREAD_MUTEX_INITIALIZER;
 static graph * g;
-static int id = 0;
 
 struct drm_t {
     pthread_mutex_t lock;
-    pthread_mutex_t cv;
+    pthread_cond_t cv;
     bool in_use;
 };
 
@@ -24,14 +28,13 @@ drm_t *drm_init() {
         // Malloc failed
         return NULL;
     }
-    new_drm->lock = PTHREAD_MUTEX_INITIALIZER;
-    new_drm->cv = PTHREAD_COND_INITIALIZER;
+    pthread_mutex_init(&(new_drm->lock), NULL);
+    pthread_cond_init(&(new_drm->cv), NULL);
     new_drm->in_use = false;
 
     // Create (if needed) and update graph
-    pthread_mutex_lock(&graph_lock):
+    pthread_mutex_lock(&graph_lock);
     if (!g) {
-        graph_lock = PTHREAD_MUTEX_INITIALIZER;
         g = shallow_graph_create();
     }
     graph_add_vertex(g, new_drm);
@@ -82,14 +85,14 @@ int drm_wait(drm_t *drm, pthread_t *thread_id) {
             }
             pthread_mutex_lock(&graph_lock);
             graph_remove_edge(g, thread_id, drm); // thread now has the resource, change edge direction
-            graph_add_edge(g, drm, thread_d);
+            graph_add_edge(g, drm, thread_id);
             pthread_mutex_unlock(&graph_lock);
             retval = 1; 
         }
     } else {
         // drm is not in use, no worry about deadlock
-        graph_add_edge(g, drm, thread_);
-            pthread_mutex_unlock(&graph_lock)
+        graph_add_edge(g, drm, thread_id);
+            pthread_mutex_unlock(&graph_lock);
         drm->in_use = true;
         retval = 1;
     }
@@ -128,7 +131,7 @@ void drm_destroy(drm_t *drm) {
 bool _cycle_present(graph * g, pthread_t * thread_id) {
     // BFS on graph, no cross edges so we can do niave directed BFS
     queue * q = queue_create(graph_vertex_count(g));
-    set * shallow_set_create();
+    set * s = shallow_set_create();
 
     // Setup queue
     bool cycle = false;
@@ -139,11 +142,13 @@ bool _cycle_present(graph * g, pthread_t * thread_id) {
         void * key = queue_pull(q);
         q_size--;
 
-        if (set_contains(q, key)) {
+        if (set_contains(s, key)) {
             cycle = true;
+            fprintf(stderr, "Cycle Detected!\n");
             break;
         }
 
+        set_add(s, key); // Add to visited list
         vector * dir_neighbors = graph_neighbors(g, key);
         VECTOR_FOR_EACH(dir_neighbors, neighbor, {
             queue_push(q, neighbor);
@@ -153,6 +158,6 @@ bool _cycle_present(graph * g, pthread_t * thread_id) {
     }
 
     queue_destroy(q);
-    set_destroy(set);
+    set_destroy(s);
     return cycle;
 }
