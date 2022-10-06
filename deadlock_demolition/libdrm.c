@@ -42,7 +42,18 @@ drm_t *drm_init() {
 
 int drm_post(drm_t *drm, pthread_t *thread_id) {
     /* Your code here */
-    return 0;
+    int retval = 0;
+    pthread_mutex_lock(&(drm->lock));
+    pthread_mutex_lock(&graph_lock);
+    if (graph_contains_vertex(g, thread_id)) {
+        graph_remove_edge(g, drm, thread_id);
+        drm->in_use = false;
+        pthread_cond_signal(&(drm->cv)); // Wake next waiting thread
+        retval = 1;
+    }
+    pthread_mutex_unlock(&graph_lock);
+    pthread_mutex_unlock(&(drm->lock));
+    return retval;
 }
 
 int drm_wait(drm_t *drm, pthread_t *thread_id) {
@@ -77,12 +88,12 @@ int drm_wait(drm_t *drm, pthread_t *thread_id) {
         }
     } else {
         // drm is not in use, no worry about deadlock
-        graph_add_edge(g, drm, thread_)
+        graph_add_edge(g, drm, thread_);
+            pthread_mutex_unlock(&graph_lock)
         drm->in_use = true;
         retval = 1;
     }
 
-    pthread_mutex_unlock(&graph_lock)
     pthread_mutex_unlock(&(drm->lock));
     return retval;
 }
