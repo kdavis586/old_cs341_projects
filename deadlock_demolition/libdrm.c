@@ -51,6 +51,9 @@ int drm_post(drm_t *drm, pthread_t *thread_id) {
     if (graph_contains_vertex(g, thread_id) && \
         graph_contains_vertex(g, drm) && graph_adjacent(g, drm, thread_id)) {
         graph_remove_edge(g, drm, thread_id);
+        if (!graph_vertex_degree(g, thread_id) && !graph_vertex_antidegree(g, thread_id)) {
+            graph_remove_vertex(g, thread_id);
+        }
         drm->in_use = false;
         pthread_cond_signal(&(drm->cv)); // Wake next waiting thread
         retval = 1;
@@ -109,12 +112,15 @@ void drm_destroy(drm_t *drm) {
         return;
     }
 
-    graph_remove_vertex(g, drm);
-    if (g && !graph_vertex_count(g)) {
-        // No more vertices (therefore no more edges) in graph, free it
-        pthread_mutex_destroy(&graph_lock);
-        free(g);
-        g = NULL;
+    
+    if (g) {
+        graph_remove_vertex(g, drm);
+        if (!graph_edge_count(g)) {
+            // No more vertices (therefore no more edges) in graph, free it
+            pthread_mutex_destroy(&graph_lock);
+            graph_destroy(g);
+            g = NULL;
+        }
     }
     
     pthread_mutex_destroy(&(drm->lock));
@@ -143,7 +149,6 @@ bool _cycle_present(graph * g, pthread_t * thread_id) {
 
         if (set_contains(s, key)) {
             cycle = true;
-            fprintf(stderr, "Cycle Detected!\n");
             break;
         }
 

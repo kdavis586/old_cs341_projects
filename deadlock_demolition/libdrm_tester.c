@@ -58,9 +58,8 @@ void * test3_funct1(void * arg) {
     assert(a_success == 1);
     assert(b_success == 1);
     pthread_barrier_wait(info->barrier);
-    fprintf(stderr, "Test 3 Function 1 Pass barrier 1\n");
-    int c_success = drm_wait(c, &tid);
-    assert(c_success == 0);
+
+    drm_wait(c, &tid);
 
     a_success = drm_post(a, &tid);
     b_success = drm_post(b, &tid);
@@ -76,18 +75,15 @@ void * test3_funct2(void * arg) {
     drm_t * b = vector_get(drms, 1);
     drm_t * c = vector_get(drms, 2);
     pthread_t tid = pthread_self();
+
+    int c_success = drm_wait(c, &tid);
+    assert(c_success == 1);
     pthread_barrier_wait(info->barrier);
 
-    fprintf(stderr, "Test 3 Function 2 Pass barrier 1\n");
-    int c_success = drm_wait(c, &tid);
-    int b_success = drm_wait(b, &tid);
-    assert(c_success == 1);
-    assert(b_success == 1);
+    drm_wait(b, &tid);
 
     c_success = drm_post(c, &tid);
-    b_success = drm_post(b, &tid);
     assert(c_success == 1);
-    assert(b_success == 1);
 
     return NULL;
 }
@@ -105,7 +101,7 @@ int main() {
     pthread_join(second, NULL);
     fprintf(stderr, "\n");
 
-    // Simple Deadlock Test
+    //Simple Deadlock Test
     fprintf(stderr, "---------------- Test 2 ----------------\n");
     pthread_t main_tid = pthread_self();
     int success = drm_wait(drm, &main_tid);
@@ -138,16 +134,17 @@ int main() {
     test3struct info;
     info.barrier = &barrier;
     info.drms = drms;
-
     pthread_create(&p1, NULL, test3_funct1, &info);
     pthread_create(&p2, NULL, test3_funct2, &info);
     pthread_join(p1, NULL);
     pthread_join(p2, NULL);
+    fprintf(stderr, "\n");
 
     pthread_barrier_destroy(&barrier);
     vector_destroy(drms);
-    fprintf(stderr, "\n");
-
+    drm_destroy(a);
+    drm_destroy(b);
+    drm_destroy(c);
     fprintf(stderr, "--------------- Finished ---------------\n");
     return 0;
 }
