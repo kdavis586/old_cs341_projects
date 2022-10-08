@@ -306,6 +306,9 @@ void _split_block(meta * mta, size_t new_mta_size) {
         _link_frees(*mta_prev, extra_block);
         _link_frees(extra_block, *mta_next);
 
+        *_get_next(mta) = NULL;
+        *_get_prev(mta) = NULL;
+
         _coalesce(extra_block);
     } else {
         // mta
@@ -315,6 +318,9 @@ void _split_block(meta * mta, size_t new_mta_size) {
         if (FREE == mta) {
             FREE = *_get_next(mta);
         }
+
+        *_get_next(mta) = NULL;
+        *_get_prev(mta) = NULL;
     }
 }
 
@@ -392,6 +398,9 @@ void _coalesce_left(meta * mta) {
         
         mta_tag->size = prev_block->size;
         mta = prev_block;
+
+        *_get_next(mta) = NULL;
+        *_get_prev(mta) = NULL;
     }
 }
 
@@ -420,6 +429,9 @@ void _coalesce_right(meta * mta) {
         
         next_tag->size = next_block->size;
         mta = next_block;
+
+        *_get_next(next_block) = NULL;
+        *_get_prev(next_block) = NULL;
     }
 }
 
