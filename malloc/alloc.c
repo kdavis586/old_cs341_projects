@@ -14,35 +14,30 @@ typedef struct _free_meta free_meta;
 
 struct _meta {
     size_t size;
-    char allocated;
-};
-
-struct _free_meta {
-    size_t size;
-    bool allocated;
-    free_meta * prev_free;
-    free_meta * next_free;
+    bool in_use;
 };
 
 typedef struct _tag {
-    meta * self_meta;
+    size_t size;
 } tag;
 
 
 // Forward declarations of helper functions
-void _print_free_meta(free_meta * free_mta);
-void _coalesce(free_meta * free_mta);
-void _coalesce_left(free_meta * free_mta);
-void _coalesce_right(free_meta * free_mta);
-bool _split_set(meta * mta, size_t alloc_size, bool new_block);
-void _link_frees(free_meta * left, free_meta * right);
+void _coalesce(meta * mta);
+void _coalesce_left(meta * mta);
+void _coalesce_right(meta * mta);
+void _split_block(meta * mta, size_t new_mta_size);
+void _link_frees(meta * left, meta * right);
+meta ** _get_prev(meta * mta);
+meta ** _get_next(meta * mta);
 
 // GLOBALS
-static free_meta * FREE; // List of all free chunks
+static meta * FREE; // List of all free chunks
 //static size_t SBRK_GROW = 1;
 //static size_t MALLOC_CAP = 131072;
 static void * DATA_START;
 static void * DATA_END;
+static size_t MIN_BLOCK_SIZE = sizeof(meta) + 2 * sizeof(meta **) + sizeof(tag);
 
 /**
  * Allocate space for array in memory
@@ -79,7 +74,6 @@ void *calloc(size_t num, size_t size) {
     return memory;
 }
 
-// XXX: Test 5 cycles on free list search
 
 /**
  * Allocate memory block
@@ -103,45 +97,59 @@ void *calloc(size_t num, size_t size) {
  * @see http://www.cplusplus.com/reference/clibrary/cstdlib/malloc/
  */
 void *malloc(size_t size) {
-    // See if we have space in the currently allocated memory (uses best fit)
-    free_meta * itr = FREE;
-    free_meta * best = NULL;
+    // Make sure minimum size can store 2 meta ptrs
+    if (size < 2 * sizeof(meta *)) {
+        size = 2 * sizeof(meta *);
+    }
+
+    // See if we have space in the currently allocated memory via best fit
+    meta * itr = FREE;
+    meta * best = NULL;
     while (itr) {
-        if (!itr->allocated && (itr->size >= size) && (!best || itr->size < best->size)) {         // Enough for allocation, check if can split block
+        if (!itr->in_use && itr->size >= size && (!best || itr->size < best->size)) {         // Enough for allocation, check if can split block
             best = itr;
         }
-        itr = itr->next_free;
+        itr = *_get_next(itr);
     }
     if (best) {
-        void * return_addr = (void *) best + sizeof(meta);
-        _split_set((meta *)best, size, false);
-
-        return return_addr;
+        _split_block((meta *)best, size);
+        return (void *) best + sizeof(meta);
     }
 
     // No existing blocks have enough space, call sbrk
-    size_t data_size = (size > 2 * sizeof(meta *)) ? size : 2 * sizeof(meta *);
-    size_t alloc_size = data_size + sizeof(meta) + sizeof(tag);
+    size_t alloc_size = size + sizeof(meta) + sizeof(tag);
+    // if (alloc_size < MALLOC_CAP) {
+    //     alloc_size = (alloc_size * 10 > MALLOC_CAP) ? MALLOC_CAP : alloc_size * 10;
+    // }
     if (!DATA_START) {
         DATA_START = sbrk(0);
     }
-
+    
+    DATA_END = sbrk(0);
     void * block_start = sbrk(alloc_size);
     if (block_start == (void *) -1) {
         // sbrk failed which, in turn, means our malloc failed, return NULL.
         return NULL;
     }
-    DATA_END = sbrk(0);
 
     meta * new_block = block_start;
-    new_block->size = data_size;
+    new_block->in_use = false;
+    new_block->size = alloc_size - sizeof(meta) - sizeof(tag);
+    meta ** block_prev = _get_prev(new_block);
+    *block_prev = NULL;
+    meta ** block_next = _get_next(new_block);
+    *block_next = FREE;
 
     tag * new_tag = (void *) new_block + sizeof(meta) + new_block->size;
-    new_tag->self_meta = new_block;
+    new_tag->size = new_block->size;
 
-    void * return_addr = (void *) new_block + sizeof(meta);
-    _split_set(new_block, data_size, true);
-    return return_addr;
+    if (FREE) {
+        meta ** free_prev = _get_prev(FREE);
+        *free_prev = new_block;
+    }
+
+    _split_block((meta *)new_block, size);
+    return (void *) new_block + sizeof(meta);
 }
 
 
@@ -162,8 +170,9 @@ void *malloc(size_t size) {
  *    passed as argument, no action occurs.
  */
 void free(void *ptr) {
+    //static int count = 0;
     if (!ptr) return; // Do nothing on NULL pointer.
-    free_meta * free_mta = (free_meta *)(ptr - sizeof(meta));
+    meta * mta = ptr - sizeof(meta);
     // if ((void*)free_mta + sizeof(meta) + free_mta->size + sizeof(tag) == DATA_END && free_mta->size > 1024) {
     //     // Freeing at data end, reduce heap size
     //     int reduce = -(sizeof(meta) + mta->size + sizeof(tag));
@@ -171,17 +180,25 @@ void free(void *ptr) {
     //     DATA_END = sbrk(0);
     //     return;
     // }
-    free_mta->allocated = false;
-    free_mta->prev_free = NULL;
-    free_mta->next_free = NULL;
+    mta->in_use = false;
+    meta ** mta_prev = _get_prev(mta);
+    *mta_prev = NULL;
+    meta ** mta_next = _get_next(mta);
+    *mta_next = FREE;
 
     if (FREE) {
-        free_mta->next_free = FREE;
-        FREE->prev_free = free_mta;
+        meta ** free_prev = _get_prev(FREE);
+        *free_prev = mta;
     }
-    FREE = free_mta;
+    FREE = mta;
     
-    _coalesce(free_mta);
+    
+    _coalesce(mta);
+    
+    // if (count < 10) {
+    //     fprintf(stderr, "%p, %p\n", mta, *_get_next(mta));
+    //     count++;
+    // }
 }
 
 
@@ -255,143 +272,172 @@ void *realloc(void *ptr, size_t size) {
     return return_ptr;
 }
 
+// Splits the block
+void _split_block(meta * mta, size_t new_mta_size) {
+    if (mta->size > new_mta_size + MIN_BLOCK_SIZE) {
+        // extra_block
+        meta * extra_block = (void *)mta + sizeof(meta) + new_mta_size + sizeof(tag);
+        extra_block->size = mta->size - new_mta_size - sizeof(tag) - sizeof(meta);
+        extra_block->in_use = false;
+        meta ** extra_prev = _get_prev(extra_block);
+        *extra_prev = NULL;
+        meta ** extra_next = _get_next(extra_block);
+        *extra_next = NULL;
 
-void _coalesce(free_meta * free_mta) {
-    if (!free_mta->allocated) {
+        // extra_block tag
+        tag * extra_tag = (void *)extra_block + sizeof(meta) + extra_block->size;
+        extra_tag->size = extra_block->size;
+
+        // mta
+        mta->in_use = true;
+        mta->size = new_mta_size;
+
+        // mta tag
+        tag * mta_tag = (void *)mta + sizeof(meta) + mta->size;
+        mta_tag->size = mta->size;
+
+        // Link free list
+        if (FREE == mta) {
+            FREE = extra_block;
+        }
+        meta ** mta_next = _get_next(mta);
+        meta ** mta_prev = _get_prev(mta);
+
+        _link_frees(*mta_prev, extra_block);
+        _link_frees(extra_block, *mta_next);
+
+        _coalesce(extra_block);
+    } else {
+        // mta
+        mta->in_use = true;
+        _link_frees(*_get_prev(mta), *_get_next(mta));
+
+        if (FREE == mta) {
+            FREE = *_get_next(mta);
+        }
+    }
+}
+
+// mta->allocated = true;
+//     free_meta * mta_cast = (free_meta *)mta;
+
+//     size_t min_block_space = sizeof(free_meta) + sizeof(tag);
+//     if (mta->size - data_size > min_block_space) {
+//         size_t unalloc_size = mta->size - data_size - min_block_space;
+
+//         mta->size = data_size;
+//         tag * mta_tag = (void *)mta + sizeof(meta) + mta->size;
+//         mta_tag->size = mta->size;
+
+//         free_meta * unalloc_meta = (void *)mta + sizeof(meta) + mta->size + sizeof(tag);
+//         unalloc_meta->info.size = unalloc_size;
+//         unalloc_meta->info.allocated = false;
+//         unalloc_meta->prev_free = NULL;
+//         unalloc_meta->next_free = NULL;
+
+//         if (FREE == mta_cast) {
+//             FREE = unalloc_meta;
+//         }
+
+//         _link_frees(mta_cast->prev_free, unalloc_meta);
+//         _link_frees(unalloc_meta, mta_cast->next_free);
+//         _coalesce(unalloc_meta);
+//     } else {
+//         // mta->size == data_size
+//         _link_frees(mta_cast->prev_free, mta_cast->next_free);
+//         if (FREE == mta_cast) {
+//             FREE = FREE->next_free;
+//         }
+//     }
+
+void _coalesce(meta * mta) {
+    if (!mta->in_use) {
         // left
-        if ((void *)free_mta > DATA_START) {
-            _coalesce_left(free_mta);
+        if ((void *)mta > DATA_START) {
+            _coalesce_left(mta);
         }
 
         // right
-        void * mta_end_attr = (void *)free_mta + sizeof(meta) + free_mta->size + sizeof(tag);
-        if (mta_end_attr < DATA_END) {
-            _coalesce_right(free_mta);
+        if ((void *)mta < DATA_END) {
+            _coalesce_right(mta);
         }
     }
+    
 }
 
-void _coalesce_left(free_meta * free_mta) {
+void _coalesce_left(meta * mta) {
     // Assumes left neighbor is within data bounds
-    tag * prev_tag = (tag *)((void *)free_mta - sizeof(tag));
-    free_meta * prev_cast = (free_meta *)(prev_tag->self_meta);
+    tag * prev_tag = (tag *)((void *)mta - sizeof(tag));
+    meta * prev_block = (void*)prev_tag - prev_tag->size - sizeof(meta);
 
-    if (!prev_cast->allocated) {
+    if (!prev_block->in_use) {
         // Redirect pointers to mta
-        _link_frees(free_mta->prev_free, free_mta->next_free);
-        if (FREE == free_mta) {
-            assert(free_mta->prev_free == NULL);
-            FREE = free_mta->next_free;
+        meta ** mta_prev = _get_prev(mta);
+        meta ** mta_next = _get_next(mta);
+        _link_frees(*mta_prev, *mta_next);
+
+        if (FREE == mta) {
+            mta_next = _get_next(mta); // TODO: Do I need to re-get value?
+            FREE = *mta_next;
 
             if (FREE) {
-                FREE->prev_free = NULL;
+                meta ** free_prev = _get_prev(FREE);
+                *free_prev = NULL;
             }
         }
-        free_mta->next_free = NULL;
-        free_mta->prev_free = NULL;
 
         // Join mta with prev_meta
-        prev_cast->size = prev_cast->size + sizeof(tag) + sizeof(meta) + free_mta->size;
-        tag * mta_tag = (tag *)((void *)free_mta + sizeof(meta) + free_mta->size);
-        mta_tag->self_meta = (meta *)prev_cast;
-        free_mta = prev_cast;
+        prev_block->size = prev_block->size + sizeof(tag) + sizeof(meta) + mta->size;
+        tag * mta_tag = (tag *)((void *)mta + sizeof(meta) + mta->size);
+        
+        mta_tag->size = prev_block->size;
+        mta = prev_block;
     }
 }
 
-void _coalesce_right(free_meta * free_mta) {
-    free_meta * next_cast = (free_meta *)((void *)free_mta + sizeof(meta) + free_mta->size + sizeof(tag));
+void _coalesce_right(meta * mta) {
+    meta * next_block = (void *)mta + sizeof(meta) + mta->size + sizeof(tag);
 
-    if (!next_cast->allocated) {
+    if (!next_block->in_use) {
         // Redirect pointers to mta
-        _link_frees(next_cast->prev_free, next_cast->next_free);
-        if (FREE == next_cast) {
-            assert(next_cast->prev_free == NULL);
-            FREE = next_cast->next_free;
+        meta ** next_prev = _get_prev(next_block);
+        meta ** next_next = _get_next(next_block);
+        _link_frees(*next_prev, *next_next);
+
+        if (FREE == next_block) {
+            next_next = _get_next(next_block);
+            FREE = *next_next;
 
             if (FREE) {
-                FREE->prev_free = NULL;
+                meta ** free_prev = _get_prev(FREE);
+                *free_prev = NULL;
             }
         }
-        next_cast->next_free = NULL;
-        next_cast->prev_free = NULL;
 
-        // Join mta with next_meta
-        free_mta->size = free_mta->size + sizeof(tag) + sizeof(meta) + next_cast->size;
-
-        tag * next_tag = (tag *)((void *)next_cast + sizeof(meta) + next_cast->size);
-        next_tag->self_meta = (meta *)free_mta;
+        // Join mta with prev_meta
+        mta->size = mta->size + sizeof(tag) + sizeof(meta) + next_block->size;
+        tag * next_tag = (tag *)((void *)next_block + sizeof(meta) + next_block->size);
+        
+        next_tag->size = next_block->size;
+        mta = next_block;
     }
 }
 
-
-// Splits the block pointed to at meta into two differenct blocks and allocates mta
-bool _split_set(meta * mta, size_t alloc_size, bool new_block) {
-    free_meta * mta_cast = (free_meta *)mta;
-    if (mta->size > alloc_size + sizeof(meta) + sizeof(tag)) {
-        // Only allocating part of block, init new free block and link free neighbors
-        free_meta * unalloc_meta = (free_meta *)((void *)mta + sizeof(meta) + alloc_size + sizeof(tag));
-        unalloc_meta->size = mta->size - alloc_size - sizeof(meta) - sizeof(tag);
-        unalloc_meta->allocated = false;
-        unalloc_meta->prev_free = NULL;
-        unalloc_meta->next_free = NULL;
-
-        tag * unalloc_tag = (tag *)((void *)unalloc_meta + sizeof(meta) + unalloc_meta->size);
-        unalloc_tag->self_meta = (meta *)unalloc_meta;
-
-        if (!new_block) {
-            // Free neighbors might exist, link them
-            if (FREE == mta_cast) {
-                assert(mta_cast->prev_free == NULL);
-                FREE = unalloc_meta;
-                assert(FREE->prev_free == NULL);
-            }
-            _link_frees(mta_cast->prev_free, FREE);
-            _link_frees(FREE, mta_cast->next_free);
-        } else {
-            // Brand new block, no free neighbors
-            if (FREE) {
-                unalloc_meta->next_free = FREE;
-                if (FREE) {
-                    FREE->prev_free = unalloc_meta;
-                }
-            }
-            assert(unalloc_meta->prev_free == NULL);
-            FREE = unalloc_meta;
-        }
-
-        _coalesce(unalloc_meta);
-    } else if (!new_block) {
-        // Allocating whole block
-        if (FREE == mta_cast) {
-            FREE = mta_cast->next_free;
-            if (FREE) {
-                FREE->prev_free = NULL;
-            }
-        }
-        _link_frees(mta_cast->prev_free, mta_cast->next_free);
-    }
-
-    // Set mta to allocated
-    mta_cast->allocated = true;
-    mta_cast->prev_free = NULL;
-    mta_cast->next_free = NULL;
-
-    tag * mta_tag = (tag *)((void *)mta + sizeof(meta) + mta_cast->size);
-    mta_tag->self_meta = mta;
-
-    return false;
-}
-
-void _print_free_meta(free_meta * free_mta) {
-    fprintf(stderr, "meta info\n- addr: %p\n- size: %zu\n- allocated:%d\n- prev_free: %p\n- next_free: %p\n", \
-    free_mta, free_mta->size, free_mta->allocated, free_mta->prev_free, free_mta->next_free);
-}
-
-void _link_frees(free_meta * left, free_meta * right) {
+void _link_frees(meta * left, meta * right) {
     if (left) {
-        left->next_free = right;
+        meta ** left_next = _get_next(left);
+        *left_next = right;
     }
     if (right) {
-        right->prev_free = left;
+        meta ** right_prev = _get_prev(right);
+        *right_prev = left;
     }
+}
+
+meta ** _get_prev(meta * mta) {
+    return (meta **)((void *)mta + sizeof(meta));
+}
+
+meta ** _get_next(meta * mta) {
+    return (meta **)((void *)mta + sizeof(meta) + sizeof(meta **));
 }
