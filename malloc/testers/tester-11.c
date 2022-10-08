@@ -16,16 +16,13 @@ int main(int argc, char *argv[]) {
         srand(rand_today());
         int r = rand() % 10;
         char *a = malloc(SIZE + r);
-
         if (!a)
             return 1;
-
         verify_write(a, SIZE);
         if (!verify_read(a, SIZE))
             return 1;
 
         free(a);
-
         char *b = malloc(SIZE / 2);
         verify_write(b, SIZE / 2);
 
