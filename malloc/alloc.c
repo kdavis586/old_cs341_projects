@@ -13,22 +13,29 @@ typedef struct _meta meta;
 struct _meta {
     size_t size;
     bool allocated;
-    meta * next;
-    meta * prev;
+    meta * next_free;
+    meta * prev_free;
 };
+
+typedef struct _tag {
+    meta * self_meta;
+} tag;
 
 
 
 // Forward declarations of helper functions
 void _print_match(meta * mta);
 void _coalesce(meta * mta);
-bool _split_set(meta * mta, size_t alloc_size);
+void _coalesce_left(meta * mta);
+void _coalesce_right(meta * mta);
+bool _split_set(meta * mta, size_t alloc_size, bool new_block);
 
 // GLOBALS
-static meta * TAIL; // Starting point to all the different chunks of allocated memory
-//static meta * FREE;
+static meta * FREE; // List of all free chunks
 static size_t SBRK_GROW = 1;
-static size_t MALLOC_CAP = 131072;//131072;
+static size_t MALLOC_CAP = 131072;
+static void * DATA_START;
+static void * DATA_END;
 
 /**
  * Allocate space for array in memory
@@ -89,46 +96,48 @@ void *calloc(size_t num, size_t size) {
  */
 void *malloc(size_t size) {
     // See if we have space in the currently allocated memory
-    meta * itr = TAIL;
+    meta * itr = FREE;
     while (itr) {
+        //fprintf(stderr, "itr: %p, itr->size: %zu\n", itr, itr->size);
         if (!itr->allocated && (itr->size >= size)) {         // Enough for allocation, check if can split block
             void * return_addr = (void *) itr + sizeof(meta);
-            _split_set(itr, size);
+            _split_set(itr, size, false);
             return return_addr;
         }
-        itr = itr->prev;
+        itr = itr->next_free;
     }
     
     // No existing blocks have enough space, call sbrk
-    while (SBRK_GROW < size + sizeof(meta)) {
+    // TODO: Come up with a better SBRK method
+    //fprintf(stderr, "---------------------------------> Going into sbrk logic...\n");
+    while (SBRK_GROW <= size + sizeof(meta) + sizeof(tag)) {
         SBRK_GROW *= 2;
     }
     size_t alloc_size = SBRK_GROW;
     SBRK_GROW = (SBRK_GROW > MALLOC_CAP) ? MALLOC_CAP: SBRK_GROW;
-    
-    void * data_start = sbrk(alloc_size);
-
-    if (data_start == (void *) -1) {
+    if (!DATA_START) {
+        DATA_START = sbrk(0);
+    }
+    //fprintf(stderr, "About to allocate: %zu\n", alloc_size);
+    void * block_start = sbrk(alloc_size);
+    if (block_start == (void *) -1) {
         // sbrk failed which, in turn, means our malloc failed, return NULL.
         return NULL;
     }
-    //fprintf(stderr, "size: %zu, alloc_size: %zu\n", size, alloc_size);
-    meta * new_block = data_start;
+    DATA_END = sbrk(0);
 
-    new_block->size = alloc_size - sizeof(meta);
+    meta * new_block = block_start;
+    new_block->size = alloc_size - sizeof(meta) - sizeof(tag);
     new_block->allocated = true;
-    new_block->prev = TAIL;
-    new_block->next = NULL;
-
-    if (TAIL) {
-        TAIL->next = new_block;
-    }
-
-    TAIL = new_block;
+    new_block->prev_free = NULL;
+    new_block->next_free = NULL;
+    tag * new_tag = (void *) new_block + sizeof(meta) + new_block->size;
+    new_tag->self_meta = new_block;
 
     void * return_addr = (void *) new_block + sizeof(meta);
-    _split_set(new_block, size);
+    _split_set(new_block, size, true);
 
+    //fprintf(stderr, "Finished malloc\n");
     return return_addr;
 }
 
@@ -150,9 +159,14 @@ void *malloc(size_t size) {
  *    passed as argument, no action occurs.
  */
 void free(void *ptr) {
+    //fprintf(stderr, "free on %p\n", ptr);
     if (!ptr) return; // Do nothing on NULL pointer.
     meta * mta = ptr - sizeof(meta);
     mta->allocated = false;
+    if (FREE) {
+        mta->next_free = FREE;
+    }
+    FREE = mta;
     _coalesce(mta);
 }
 
@@ -216,7 +230,7 @@ void *realloc(void *ptr, size_t size) {
     meta * ptr_meta = (meta *)(ptr - sizeof(meta));
     if (ptr_meta->size >= size) {
         // Have enough space in current area, do nothing
-        _split_set(ptr_meta, size);
+        _split_set(ptr_meta, size, false);
         return ptr;
     }
 
@@ -230,62 +244,124 @@ void *realloc(void *ptr, size_t size) {
 
 
 void _coalesce(meta * mta) {
-    _print_match(mta);
     if (!mta->allocated) {
-        if (mta->prev && !mta->prev->allocated) {
-            _print_match(mta->prev);
-            mta = mta->prev;
-            mta->size = mta->size + mta->next->size + sizeof(meta);
-            if (mta->next == TAIL) {
-                TAIL = mta;
-            }
-            mta->next = mta->next->next;
-            if (mta->next) {
-                mta->next->prev = mta;
-            }
+        //fprintf(stderr, "DATA_START: %p, DATA_END: %p, mta: %p\n", DATA_START, DATA_END, mta);
+        // left
+        if ((void *)mta > DATA_START) {
+            _coalesce_left(mta);
         }
 
-        if (mta->next && !mta->next->allocated) {
-            mta->size = mta->size + mta->next->size + sizeof(meta);
-            if (mta->next == TAIL) {
-                TAIL = mta;
-            }
-            mta->next = mta->next->next;
-            if (mta->next) {
-                mta->next->prev = mta;
-            }
+        // right
+        void * mta_end_attr = (void *)mta + sizeof(meta) + mta->size + sizeof(tag);
+        if (mta_end_attr < DATA_END) {
+            _coalesce_right(mta);
         }
     }
-    _print_match(mta);
+}
+
+void _coalesce_left(meta * mta) {
+    // Assumes left neighbor is within data bounds
+    tag * prev_tag = (tag *)((void *)mta - sizeof(tag));
+    meta * prev_meta = prev_tag->self_meta;
+    //fprintf(stderr, "_coalesce_left [-1]\n");
+    if (!prev_meta->allocated) {
+        //fprintf(stderr, "_coalesce_left [0]\n");
+        // Redirect pointers to mta
+        if (mta->prev_free) {
+            mta->prev_free->next_free = mta->next_free;
+        }
+        if (mta->next_free) {
+            mta->next_free->prev_free = mta->prev_free;
+        }
+        if (FREE == mta) {
+            FREE = mta->next_free;
+        }
+        //fprintf(stderr, "_coalesce_left [0]\n");
+
+        // Join mta with prev_meta
+        prev_meta->size = prev_meta->size + sizeof(tag) + sizeof(meta) + mta->size;
+        tag * mta_tag = (tag *)((void *)mta + sizeof(meta) + mta->size);
+        mta_tag->self_meta = prev_meta;
+        mta = prev_meta;
+        //fprintf(stderr, "_coalesce_left [2]\n");
+    }
+}
+
+void _coalesce_right(meta * mta) {
+    meta * next_meta = (meta *)((void *)mta + sizeof(meta) + mta->size + sizeof(tag));
+    //fprintf(stderr, "_coalesce_right [-1]\n");
+    if (!next_meta->allocated) {
+        // Redirect pointers to next_meta
+        //fprintf(stderr, "_coalesce_right [0]\n");
+        if (next_meta->prev_free) {
+            next_meta->prev_free->next_free = next_meta->next_free;
+        }
+        if (next_meta->next_free) {
+            next_meta->next_free->prev_free = next_meta->prev_free;
+        }
+        if (FREE == next_meta) {
+            FREE = next_meta->next_free;
+        }
+        //fprintf(stderr, "_coalesce_right [1]\n");
+
+        // Join mta with next_meta
+        mta->size = mta->size + sizeof(tag) + sizeof(meta) + next_meta->size;
+        tag * next_tag = (tag *)((void *)next_meta + sizeof(meta) + next_meta->size);
+        next_tag->self_meta = mta;
+        //fprintf(stderr, "_coalesce_right [2]\n");
+    }
 }
 
 
 // Splits the block pointed to at meta into two differenct blocks and allocates mta
-bool _split_set(meta * mta, size_t alloc_size) { 
-    if (mta->size > alloc_size + sizeof(meta)) {
-        meta * unalloc_meta = (meta *) ((void *)mta + sizeof(meta) + alloc_size);
-
-        // Set unalloc data
-        unalloc_meta->size = mta->size - alloc_size - sizeof(meta);
+bool _split_set(meta * mta, size_t alloc_size, bool new_block) { 
+    if (mta->size > alloc_size + sizeof(meta) + sizeof(tag)) {
+        //fprintf(stderr, "[0]\n");
+        meta * unalloc_meta = (meta *) ((void *)mta + sizeof(meta) + alloc_size + sizeof(tag));
+        unalloc_meta->size = mta->size - alloc_size - sizeof(meta) - sizeof(tag);
         unalloc_meta->allocated = false;
-        unalloc_meta->next = mta->next;
-        if (unalloc_meta->next) {
-            unalloc_meta->next->prev = unalloc_meta;
-        }
-        unalloc_meta->prev = mta;
-        if (mta == TAIL) {
-            TAIL = unalloc_meta;
-        }
-
+        if (!new_block) {
+            unalloc_meta->prev_free = mta->prev_free;
+            //fprintf(stderr, "[1]\n");
+            if (unalloc_meta->prev_free) {
+                unalloc_meta->prev_free->next_free = unalloc_meta; // Redirect list neighbor pointers
+            }
+            unalloc_meta->next_free = mta->next_free;
+            //fprintf(stderr, "[2]\n");
+            if (unalloc_meta->next_free) {
+                unalloc_meta->next_free->prev_free = unalloc_meta; // Redirect list neighbor pointers
+            }
+            if (FREE == mta) {
+                //fprintf(stderr, "Setting free to %p with size %zu\n", unalloc_meta, unalloc_meta->size);
+                FREE = unalloc_meta;
+            }
+        } else {
+            if (FREE) {
+                unalloc_meta->next_free = FREE;
+            }
+            FREE = unalloc_meta;
+        }   
+        
+        //fprintf(stderr, "[3]\n");
+        tag * unalloc_tag = (tag *)((void *)unalloc_meta + sizeof(meta) + unalloc_meta->size);
+        unalloc_tag->self_meta = unalloc_meta;
+        //fprintf(stderr, "[4]\n");
         mta->size = alloc_size;
         mta->allocated = true;
-        mta->next = unalloc_meta;
-
+        mta->prev_free = NULL;
+        mta->next_free = NULL;
+        tag * mta_tag = (tag *)((void *)mta + sizeof(meta) + mta->size);
+        mta_tag->self_meta = mta;
+        //fprintf(stderr, "[5]\n");
         _coalesce(unalloc_meta);
         return true;
     }
 
+    //fprintf(stderr, "[00]\n");
     mta->allocated = true;
+    mta->prev_free = NULL;
+    mta->next_free = NULL;
+    //fprintf(stderr, "[01]\n");
     return false;
 }
 
