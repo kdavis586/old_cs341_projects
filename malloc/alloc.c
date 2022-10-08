@@ -108,7 +108,7 @@ void *malloc(size_t size) {
     
     // No existing blocks have enough space, call sbrk
     // TODO: Come up with a better SBRK method
-    while (SBRK_GROW <= size + sizeof(meta) + sizeof(tag)) {
+    while (SBRK_GROW < size + sizeof(meta) + sizeof(tag)) {
         SBRK_GROW *= 2;
     }
     size_t alloc_size = size + sizeof(meta) + sizeof(tag);
@@ -338,6 +338,15 @@ bool _split_set(meta * mta, size_t alloc_size, bool new_block) {
     }
 
     mta->allocated = true;
+    if (mta->prev_free) {
+        mta->prev_free->next_free = mta->next_free;
+    }
+    if (mta->next_free) {
+        mta->next_free->prev_free = mta->prev_free;
+    }
+    if (FREE == mta) {
+        FREE = mta->next_free;
+    }
     mta->prev_free = NULL;
     mta->next_free = NULL;
     return false;
