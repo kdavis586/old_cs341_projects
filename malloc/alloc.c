@@ -125,12 +125,12 @@ void *malloc(size_t size) {
         DATA_START = sbrk(0);
     }
     
-    DATA_END = sbrk(0);
     void * block_start = sbrk(alloc_size);
     if (block_start == (void *) -1) {
         // sbrk failed which, in turn, means our malloc failed, return NULL.
         return NULL;
     }
+    DATA_END = sbrk(0);
 
     meta * new_block = block_start;
     new_block->in_use = false;
@@ -364,7 +364,8 @@ void _coalesce(meta * mta) {
         }
 
         // right
-        if ((void *)mta < DATA_END) {
+        void * end_addr = (void *)mta + sizeof(mta) + mta->size + sizeof(tag);
+        if (end_addr < DATA_END) {
             _coalesce_right(mta);
         }
     }
