@@ -24,8 +24,8 @@ typedef struct _tag {
 
 // Forward declarations of helper functions
 void _coalesce(meta * mta);
-void _coalesce_left(meta * mta);
-void _coalesce_right(meta * mta);
+meta * _coalesce_left(meta * mta);
+meta * _coalesce_right(meta * mta);
 void _split_block(meta * mta, size_t new_mta_size);
 void _link_frees(meta * left, meta * right);
 meta ** _get_prev(meta * mta);
@@ -35,7 +35,7 @@ void _cycle_check(meta * check);
 // GLOBALS
 static meta * FREE = NULL; // List of all free chunks
 //static size_t SBRK_GROW = 1;
-//static size_t MALLOC_CAP = 131072;
+static size_t MALLOC_CAP = 131072;
 static void * DATA_START;
 static void * DATA_END;
 static size_t MIN_BLOCK_SIZE = sizeof(meta) + 2 * sizeof(meta **) + sizeof(tag);
@@ -115,16 +115,16 @@ void *malloc(size_t size) {
         // _coalesce(temp);
     }
     if (best) {
-        // TODO: Figure out why allocated block is not leaving the free list...
         _split_block(best, size);
         return (void *) best + sizeof(meta);
     }
 
     // No existing blocks have enough space, call sbrk
     size_t alloc_size = size + sizeof(meta) + sizeof(tag);
-    // if (alloc_size < MALLOC_CAP) {
-    //     alloc_size = (alloc_size * 10 > MALLOC_CAP) ? MALLOC_CAP : alloc_size * 10;
-    // }
+    // BUG: Do I want this?
+    if (alloc_size < MALLOC_CAP) {
+        alloc_size = (alloc_size * 10 > MALLOC_CAP) ? MALLOC_CAP : alloc_size * 1024;
+    }
     if (!DATA_START) {
         DATA_START = sbrk(0);
     }
@@ -174,13 +174,16 @@ void free(void *ptr) {
     //static int count = 0;
     if (!ptr) return; // Do nothing on NULL pointer.
     meta * mta = ptr - sizeof(meta);
-    // if ((void*)free_mta + sizeof(meta) + free_mta->size + sizeof(tag) == DATA_END && free_mta->size > 1024) {
+
+    // // BUG: Maybe will cause issues
+    // if ((void*)mta + sizeof(meta) + mta->size + sizeof(tag) == DATA_END && mta->size > 1024) {
     //     // Freeing at data end, reduce heap size
     //     int reduce = -(sizeof(meta) + mta->size + sizeof(tag));
     //     sbrk(reduce);
     //     DATA_END = sbrk(0);
     //     return;
     // }
+
     mta->in_use = false;
     *_get_prev(mta) = NULL;
     *_get_next(mta) = FREE;
@@ -295,14 +298,12 @@ void _split_block(meta * mta, size_t new_mta_size) {
 
         *_get_next(mta) = NULL;
         *_get_prev(mta) = NULL;
-
         _coalesce(extra_block);
     } else {
         // mta
         mta->in_use = true;
         _link_frees(*_get_prev(mta), *_get_next(mta));
 
-        // TODO: some stupid ass shit in here
         if (FREE == mta) {
             FREE = *_get_next(mta);
         }
@@ -317,20 +318,21 @@ void _coalesce(meta * mta) {
     if (!mta->in_use) {
         // left
         if ((void *)mta > DATA_START) {
-            _coalesce_left(mta);
+            mta = _coalesce_left(mta);
         }
 
         // right
         void * end_addr = (void *)mta + sizeof(meta) + mta->size + sizeof(tag);
         if (end_addr < DATA_END) {
-            _coalesce_right(mta);
+            mta = _coalesce_right(mta);
         }
     }
+
 }
 
-void _coalesce_left(meta * mta) {
+meta * _coalesce_left(meta * mta) {
     // Assumes left neighbor is within data bounds
-    tag * prev_tag = (tag *)((void *)mta - sizeof(tag));
+    tag * prev_tag = (void *)mta - sizeof(tag);
     meta * prev_block = (void*)prev_tag - prev_tag->size - sizeof(meta);
 
     if (!prev_block->in_use) {
@@ -341,43 +343,70 @@ void _coalesce_left(meta * mta) {
             FREE = *_get_next(mta);
         }
 
+        *_get_next(mta) = NULL;
+        *_get_prev(mta) = NULL;
+
         // Join mta with prev_meta
         prev_block->size = prev_block->size + sizeof(tag) + sizeof(meta) + mta->size;
         tag * mta_tag = (tag *)((void *)mta + sizeof(meta) + mta->size);
         
         mta_tag->size = prev_block->size;
         
-        *_get_next(mta) = NULL;
-        *_get_prev(mta) = NULL;
+        
 
         mta = prev_block;
+
+        //BUG: Causes test 5 to segfault
+        if ((void *)mta > DATA_START) {
+            mta = _coalesce_left(mta);
+        }
     }
+
+    return mta;
 }
 
-void _coalesce_right(meta * mta) {
+meta * _coalesce_right(meta * mta) {
     meta * next_block = (void *)mta + sizeof(meta) + mta->size + sizeof(tag);
+    if (next_block->size < 2 * sizeof(meta *)) {
+        exit(23);
+    }
 
     if (!next_block->in_use) {
+        meta * itr = FREE;
+        bool found = false;
+        while (itr) {
+            if (itr == next_block) {
+                found = true;
+                break;
+            }
+            itr = *_get_next(itr);
+        }
+        if (!found) {
+            exit(43);
+        }
         // Redirect pointers to mta
         _link_frees(*_get_prev(next_block), *_get_next(next_block));
 
         if (FREE == next_block) {
             FREE = *_get_next(next_block);
-
-            if (FREE) {
-                *_get_prev(FREE) = NULL;
-            }
         }
+
+        *_get_next(next_block) = NULL;
+        *_get_prev(next_block) = NULL;
 
         // Join mta with prev_meta
         mta->size = mta->size + sizeof(tag) + sizeof(meta) + next_block->size;
         tag * next_tag = (tag *)((void *)next_block + sizeof(meta) + next_block->size);
         
-        next_tag->size = next_block->size;
+        next_tag->size = mta->size;
 
-        *_get_next(next_block) = NULL;
-        *_get_prev(next_block) = NULL;
+        void * end_addr = (void *)mta + sizeof(meta) + mta->size + sizeof(tag);
+        if (end_addr < DATA_END) {
+            mta = _coalesce_right(mta);
+        }
     }
+
+    return mta;
 }
 
 void _link_frees(meta * left, meta * right) {
