@@ -35,7 +35,7 @@ void _cycle_check(meta * check);
 // GLOBALS
 static meta * FREE = NULL; // List of all free chunks
 //static size_t SBRK_GROW = 1;
-static size_t MALLOC_CAP = 131072;
+//static size_t MALLOC_CAP = 131072;
 static void * DATA_START;
 static void * DATA_END;
 static size_t MIN_BLOCK_SIZE = sizeof(meta) + 2 * sizeof(meta **) + sizeof(tag);
@@ -122,9 +122,9 @@ void *malloc(size_t size) {
     // No existing blocks have enough space, call sbrk
     size_t alloc_size = size + sizeof(meta) + sizeof(tag);
     // BUG: Do I want this?
-    if (alloc_size < MALLOC_CAP) {
-        alloc_size = (alloc_size * 10 > MALLOC_CAP) ? MALLOC_CAP : alloc_size * 1024;
-    }
+    // if (alloc_size < MALLOC_CAP) {
+    //     alloc_size = (alloc_size * 10 > MALLOC_CAP) ? MALLOC_CAP : alloc_size * 1024;
+    // }
     if (!DATA_START) {
         DATA_START = sbrk(0);
     }
