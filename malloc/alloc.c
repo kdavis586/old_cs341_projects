@@ -23,7 +23,7 @@ typedef struct _tag {
 
 
 // Forward declarations of helper functions
-void _coalesce(meta * mta);
+meta * _coalesce(meta * mta);
 meta * _coalesce_left(meta * mta);
 meta * _coalesce_right(meta * mta);
 void _split_block(meta * mta, size_t new_mta_size);
@@ -175,11 +175,11 @@ void free(void *ptr) {
     if (!ptr) return; // Do nothing on NULL pointer.
     meta * mta = ptr - sizeof(meta);
 
-    // // BUG: Maybe will cause issues
-    // if ((void*)mta + sizeof(meta) + mta->size + sizeof(tag) == DATA_END && DATA_END - DATA_START > 1073741824) {
+    // // BUG: If present 8 passes, 11 fails and overall slower test times, if not present 8 fails, 11 passes
+    // if ((void*)mta + sizeof(meta) + mta->size + sizeof(tag) == DATA_END && DATA_END - DATA_START > 1073741824 / 4) {
     //     // Freeing at data end, reduce heap size
-    //     int reduce = -(sizeof(meta) + mta->size + sizeof(tag));
-    //     sbrk(reduce);
+    //     int reduce = (int)(sizeof(meta) + mta->size + sizeof(tag));
+    //     sbrk(-reduce);
     //     DATA_END = sbrk(0);
     //     return;
     // }
@@ -248,6 +248,10 @@ void *realloc(void *ptr, size_t size) {
         return NULL;
     } 
     
+    if (size < 2 * sizeof(meta *)) {
+        size = 2 * sizeof(meta *);
+    }
+
     if (!ptr) {
         return malloc(size);
     }
@@ -257,6 +261,33 @@ void *realloc(void *ptr, size_t size) {
         // Have enough space in current area, do nothing
         return ptr;
     }
+    
+    // TODO: memset 0 on adjacent neighbor if free
+    void * end_addr = (void *)ptr_meta + sizeof(meta) + ptr_meta->size + sizeof(tag);
+    if (end_addr < DATA_END) {
+        meta * next_mem = end_addr;
+        
+        size_t new_join_size = ptr_meta->size + sizeof(tag) + sizeof(meta) + next_mem->size;
+        if (!next_mem->in_use && new_join_size >= size) {
+            _link_frees(*_get_prev(next_mem), *_get_next(next_mem));
+
+            if (FREE == next_mem) {
+                FREE = *_get_next(next_mem);
+            }
+
+            *_get_next(next_mem) = NULL;
+            *_get_prev(next_mem) = NULL;
+
+            ptr_meta->size = new_join_size;
+            tag * next_tag = (void *)next_mem + sizeof(meta) + next_mem->size;
+            next_tag->size = ptr_meta->size;
+
+            memset((void *)next_mem - sizeof(tag), 0, sizeof(tag) + sizeof(meta) + next_mem->size);
+
+            return ptr;
+        }
+    }
+
 
     return_ptr = malloc(size);
     if (return_ptr) {
@@ -314,7 +345,7 @@ void _split_block(meta * mta, size_t new_mta_size) {
     }
 }
 
-void _coalesce(meta * mta) {
+meta * _coalesce(meta * mta) {
     if (!mta->in_use) {
         // left
         if ((void *)mta > DATA_START) {
@@ -328,6 +359,7 @@ void _coalesce(meta * mta) {
         }
     }
 
+    return mta;
 }
 
 meta * _coalesce_left(meta * mta) {
@@ -356,7 +388,6 @@ meta * _coalesce_left(meta * mta) {
 
         mta = prev_block;
 
-        //BUG: Causes test 5 to segfault
         if ((void *)mta > DATA_START) {
             mta = _coalesce_left(mta);
         }
@@ -367,23 +398,8 @@ meta * _coalesce_left(meta * mta) {
 
 meta * _coalesce_right(meta * mta) {
     meta * next_block = (void *)mta + sizeof(meta) + mta->size + sizeof(tag);
-    if (next_block->size < 2 * sizeof(meta *)) {
-        exit(23);
-    }
 
     if (!next_block->in_use) {
-        meta * itr = FREE;
-        bool found = false;
-        while (itr) {
-            if (itr == next_block) {
-                found = true;
-                break;
-            }
-            itr = *_get_next(itr);
-        }
-        if (!found) {
-            exit(43);
-        }
         // Redirect pointers to mta
         _link_frees(*_get_prev(next_block), *_get_next(next_block));
 
@@ -446,3 +462,68 @@ void _cycle_check(meta * check) {
         itr = *_get_next(itr);
     }
 }
+
+// meta * _realloc_extend(meta * mta, size_t new_size) {
+//     if (_get_extend_size(mta) >= new_size) {
+//         if (mta > DATA_START) {
+//             tag * prev_mem_tag = (void *)mta - sizeof(tag);
+//             meta * prev_mem = (void *)tag - tag->size - sizeof(meta);
+
+//             if (!prev_mem->in_use) {
+//                 // TODO: Some realloc specific joining in here
+//                 _link_frees(*_get_prev(prev_mem), *_get_next(prev_mem));
+
+//                 if (FREE == prev_mem) {
+//                     FREE = *_get_next(prev_mem);
+//                 }
+
+//                 *_get_prev(prev_mem) = NULL;
+//                 *_get_next(prev_mem) = NULL;
+
+//                 prev_block->size = prev_block->size + sizeof(tag) + sizeof(meta) + mta->size;
+//                 tag * mta_tag = (tag *)((void *)mta + sizeof(meta) + mta->size);
+                
+//                 mta_tag->size = prev_block->size;
+
+
+//                 extended = true;
+//             }
+//         }
+
+//         void * end_addr = (void *)mta + sizeof(meta) + mta->size + sizeof(tag);
+//         if (end_addr < DATA_END) {
+//             meta * next_mem = end_addr;
+//             if (!next_mem->in_use) {
+//                 // TODO: Some realloc specific joining in here
+//                 extended = true;
+//             }
+//         }
+//     }
+
+//     return mta;
+// }
+
+// size_t _get_extend_size(meta * mta) {
+//     size_t extend_size = mta->size;
+
+//     if (mta > DATA_START) {
+//         tag * prev_mem_tag = (void *)mta - sizeof(tag);
+//         meta * prev_mem = (void *)tag - tag->size - sizeof(meta);
+
+//         if (!prev_mem->in_use) {
+//             // TODO: Some realloc specific joining in here
+//             extend_size += prev_mem->size + sizeof(tag) + sizeof(meta);
+//         }
+//     }
+
+//     void * end_addr = (void *)mta + sizeof(meta) + mta->size + sizeof(tag);
+//     if (end_addr < DATA_END) {
+//         meta * next_mem = end_addr;
+//         if (!next_mem->in_use) {
+//             // TODO: Some realloc specific joining in here
+//             extend_size += sizeof(tag) + sizeof(meta) + next_mem->size;
+//         }
+//     }
+
+//     return extend_size;
+// }
