@@ -176,7 +176,7 @@ void free(void *ptr) {
     meta * mta = ptr - sizeof(meta);
 
     // // BUG: Maybe will cause issues
-    // if ((void*)mta + sizeof(meta) + mta->size + sizeof(tag) == DATA_END && mta->size > 1024) {
+    // if ((void*)mta + sizeof(meta) + mta->size + sizeof(tag) == DATA_END && DATA_END - DATA_START > 1073741824) {
     //     // Freeing at data end, reduce heap size
     //     int reduce = -(sizeof(meta) + mta->size + sizeof(tag));
     //     sbrk(reduce);
