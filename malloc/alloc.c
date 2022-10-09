@@ -30,9 +30,10 @@ void _split_block(meta * mta, size_t new_mta_size);
 void _link_frees(meta * left, meta * right);
 meta ** _get_prev(meta * mta);
 meta ** _get_next(meta * mta);
+void _cycle_check(meta * check);
 
 // GLOBALS
-static meta * FREE; // List of all free chunks
+static meta * FREE = NULL; // List of all free chunks
 //static size_t SBRK_GROW = 1;
 //static size_t MALLOC_CAP = 131072;
 static void * DATA_START;
@@ -105,14 +106,17 @@ void *malloc(size_t size) {
     // See if we have space in the currently allocated memory via best fit
     meta * itr = FREE;
     meta * best = NULL;
-    while (itr) {
-        if (!itr->in_use && itr->size >= size && (!best || itr->size < best->size)) {         // Enough for allocation, check if can split block
+    while (itr) {    
+        if (itr->size >= size && (!best || itr->size < best->size)) {         // Enough for allocation, check if can split block
             best = itr;
         }
+        // meta * temp = itr;
         itr = *_get_next(itr);
+        // _coalesce(temp);
     }
     if (best) {
-        _split_block((meta *)best, size);
+        // TODO: Figure out why allocated block is not leaving the free list...
+        _split_block(best, size);
         return (void *) best + sizeof(meta);
     }
 
@@ -135,18 +139,15 @@ void *malloc(size_t size) {
     meta * new_block = block_start;
     new_block->in_use = false;
     new_block->size = alloc_size - sizeof(meta) - sizeof(tag);
-    meta ** block_prev = _get_prev(new_block);
-    *block_prev = NULL;
-    meta ** block_next = _get_next(new_block);
-    *block_next = FREE;
+    *_get_prev(new_block) = NULL;
+    *_get_next(new_block) = FREE;
+    if (FREE) {
+        *_get_prev(FREE) = new_block;
+    }
+    FREE = new_block;
 
     tag * new_tag = (void *) new_block + sizeof(meta) + new_block->size;
     new_tag->size = new_block->size;
-
-    if (FREE) {
-        meta ** free_prev = _get_prev(FREE);
-        *free_prev = new_block;
-    }
 
     _split_block((meta *)new_block, size);
     return (void *) new_block + sizeof(meta);
@@ -181,24 +182,14 @@ void free(void *ptr) {
     //     return;
     // }
     mta->in_use = false;
-    meta ** mta_prev = _get_prev(mta);
-    *mta_prev = NULL;
-    meta ** mta_next = _get_next(mta);
-    *mta_next = FREE;
+    *_get_prev(mta) = NULL;
+    *_get_next(mta) = FREE;
 
     if (FREE) {
-        meta ** free_prev = _get_prev(FREE);
-        *free_prev = mta;
+        *_get_prev(FREE) = mta;
     }
     FREE = mta;
-    
-    
     _coalesce(mta);
-    
-    // if (count < 10) {
-    //     fprintf(stderr, "%p, %p\n", mta, *_get_next(mta));
-    //     count++;
-    // }
 }
 
 
@@ -279,10 +270,8 @@ void _split_block(meta * mta, size_t new_mta_size) {
         meta * extra_block = (void *)mta + sizeof(meta) + new_mta_size + sizeof(tag);
         extra_block->size = mta->size - new_mta_size - sizeof(tag) - sizeof(meta);
         extra_block->in_use = false;
-        meta ** extra_prev = _get_prev(extra_block);
-        *extra_prev = NULL;
-        meta ** extra_next = _get_next(extra_block);
-        *extra_next = NULL;
+        *_get_prev(extra_block) = NULL;
+        *_get_next(extra_block) = NULL;
 
         // extra_block tag
         tag * extra_tag = (void *)extra_block + sizeof(meta) + extra_block->size;
@@ -297,14 +286,12 @@ void _split_block(meta * mta, size_t new_mta_size) {
         mta_tag->size = mta->size;
 
         // Link free list
-        if (FREE == mta) {
+        if (FREE == mta || !FREE) {
             FREE = extra_block;
         }
-        meta ** mta_next = _get_next(mta);
-        meta ** mta_prev = _get_prev(mta);
 
-        _link_frees(*mta_prev, extra_block);
-        _link_frees(extra_block, *mta_next);
+        _link_frees(*_get_prev(mta), extra_block);
+        _link_frees(extra_block, *_get_next(mta));
 
         *_get_next(mta) = NULL;
         *_get_prev(mta) = NULL;
@@ -315,46 +302,16 @@ void _split_block(meta * mta, size_t new_mta_size) {
         mta->in_use = true;
         _link_frees(*_get_prev(mta), *_get_next(mta));
 
+        // TODO: some stupid ass shit in here
         if (FREE == mta) {
             FREE = *_get_next(mta);
         }
+        
 
         *_get_next(mta) = NULL;
         *_get_prev(mta) = NULL;
     }
 }
-
-// mta->allocated = true;
-//     free_meta * mta_cast = (free_meta *)mta;
-
-//     size_t min_block_space = sizeof(free_meta) + sizeof(tag);
-//     if (mta->size - data_size > min_block_space) {
-//         size_t unalloc_size = mta->size - data_size - min_block_space;
-
-//         mta->size = data_size;
-//         tag * mta_tag = (void *)mta + sizeof(meta) + mta->size;
-//         mta_tag->size = mta->size;
-
-//         free_meta * unalloc_meta = (void *)mta + sizeof(meta) + mta->size + sizeof(tag);
-//         unalloc_meta->info.size = unalloc_size;
-//         unalloc_meta->info.allocated = false;
-//         unalloc_meta->prev_free = NULL;
-//         unalloc_meta->next_free = NULL;
-
-//         if (FREE == mta_cast) {
-//             FREE = unalloc_meta;
-//         }
-
-//         _link_frees(mta_cast->prev_free, unalloc_meta);
-//         _link_frees(unalloc_meta, mta_cast->next_free);
-//         _coalesce(unalloc_meta);
-//     } else {
-//         // mta->size == data_size
-//         _link_frees(mta_cast->prev_free, mta_cast->next_free);
-//         if (FREE == mta_cast) {
-//             FREE = FREE->next_free;
-//         }
-//     }
 
 void _coalesce(meta * mta) {
     if (!mta->in_use) {
@@ -364,12 +321,11 @@ void _coalesce(meta * mta) {
         }
 
         // right
-        void * end_addr = (void *)mta + sizeof(mta) + mta->size + sizeof(tag);
+        void * end_addr = (void *)mta + sizeof(meta) + mta->size + sizeof(tag);
         if (end_addr < DATA_END) {
             _coalesce_right(mta);
         }
     }
-    
 }
 
 void _coalesce_left(meta * mta) {
@@ -379,18 +335,10 @@ void _coalesce_left(meta * mta) {
 
     if (!prev_block->in_use) {
         // Redirect pointers to mta
-        meta ** mta_prev = _get_prev(mta);
-        meta ** mta_next = _get_next(mta);
-        _link_frees(*mta_prev, *mta_next);
+        _link_frees(*_get_prev(mta), *_get_next(mta));
 
         if (FREE == mta) {
-            mta_next = _get_next(mta); // TODO: Do I need to re-get value?
-            FREE = *mta_next;
-
-            if (FREE) {
-                meta ** free_prev = _get_prev(FREE);
-                *free_prev = NULL;
-            }
+            FREE = *_get_next(mta);
         }
 
         // Join mta with prev_meta
@@ -398,10 +346,11 @@ void _coalesce_left(meta * mta) {
         tag * mta_tag = (tag *)((void *)mta + sizeof(meta) + mta->size);
         
         mta_tag->size = prev_block->size;
-        mta = prev_block;
-
+        
         *_get_next(mta) = NULL;
         *_get_prev(mta) = NULL;
+
+        mta = prev_block;
     }
 }
 
@@ -410,17 +359,13 @@ void _coalesce_right(meta * mta) {
 
     if (!next_block->in_use) {
         // Redirect pointers to mta
-        meta ** next_prev = _get_prev(next_block);
-        meta ** next_next = _get_next(next_block);
-        _link_frees(*next_prev, *next_next);
+        _link_frees(*_get_prev(next_block), *_get_next(next_block));
 
         if (FREE == next_block) {
-            next_next = _get_next(next_block);
-            FREE = *next_next;
+            FREE = *_get_next(next_block);
 
             if (FREE) {
-                meta ** free_prev = _get_prev(FREE);
-                *free_prev = NULL;
+                *_get_prev(FREE) = NULL;
             }
         }
 
@@ -429,7 +374,6 @@ void _coalesce_right(meta * mta) {
         tag * next_tag = (tag *)((void *)next_block + sizeof(meta) + next_block->size);
         
         next_tag->size = next_block->size;
-        mta = next_block;
 
         *_get_next(next_block) = NULL;
         *_get_prev(next_block) = NULL;
@@ -438,12 +382,10 @@ void _coalesce_right(meta * mta) {
 
 void _link_frees(meta * left, meta * right) {
     if (left) {
-        meta ** left_next = _get_next(left);
-        *left_next = right;
+        *_get_next(left) = right;
     }
     if (right) {
-        meta ** right_prev = _get_prev(right);
-        *right_prev = left;
+        *_get_prev(right) = left;
     }
 }
 
@@ -453,4 +395,25 @@ meta ** _get_prev(meta * mta) {
 
 meta ** _get_next(meta * mta) {
     return (meta **)((void *)mta + sizeof(meta) + sizeof(meta **));
+}
+
+void _cycle_check(meta * check) {
+    meta * itr = FREE;
+    bool seen_free = false;
+    while (itr) {
+        if (itr == check) {
+            fprintf(stderr, "alloced block in free list\n");
+            exit(1);
+        }
+        if (itr == FREE) {
+            if (seen_free) {
+                fprintf(stderr, "Cycle!\n");
+                exit(1);
+            }
+
+            seen_free = true;
+        }
+
+        itr = *_get_next(itr);
+    }
 }
