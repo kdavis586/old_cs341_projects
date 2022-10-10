@@ -30,12 +30,9 @@ void _split_block(meta * mta, size_t new_mta_size);
 void _link_frees(meta * left, meta * right);
 meta ** _get_prev(meta * mta);
 meta ** _get_next(meta * mta);
-void _cycle_check(meta * check);
 
 // GLOBALS
 static meta * FREE = NULL; // List of all free chunks
-//static size_t SBRK_GROW = 1;
-//static size_t MALLOC_CAP = 131072;
 static void * DATA_START;
 static void * DATA_END;
 static size_t MIN_BLOCK_SIZE = sizeof(meta) + 2 * sizeof(meta **) + sizeof(tag);
@@ -121,10 +118,6 @@ void *malloc(size_t size) {
 
     // No existing blocks have enough space, call sbrk
     size_t alloc_size = size + sizeof(meta) + sizeof(tag);
-    // BUG: Do I want this?
-    // if (alloc_size < MALLOC_CAP) {
-    //     alloc_size = (alloc_size * 10 > MALLOC_CAP) ? MALLOC_CAP : alloc_size * 1024;
-    // }
     if (!DATA_START) {
         DATA_START = sbrk(0);
     }
@@ -174,15 +167,6 @@ void free(void *ptr) {
     //static int count = 0;
     if (!ptr) return; // Do nothing on NULL pointer.
     meta * mta = ptr - sizeof(meta);
-
-    // // BUG: If present 8 passes, 11 fails and overall slower test times, if not present 8 fails, 11 passes
-    // if ((void*)mta + sizeof(meta) + mta->size + sizeof(tag) == DATA_END && DATA_END - DATA_START > 1073741824 / 4) {
-    //     // Freeing at data end, reduce heap size
-    //     int reduce = (int)(sizeof(meta) + mta->size + sizeof(tag));
-    //     sbrk(-reduce);
-    //     DATA_END = sbrk(0);
-    //     return;
-    // }
 
     mta->in_use = false;
     *_get_prev(mta) = NULL;
@@ -262,7 +246,7 @@ void *realloc(void *ptr, size_t size) {
         return ptr;
     }
     
-    // TODO: memset 0 on adjacent neighbor if free
+    // Sees if right contiguous block is free and will join them is combined size if greater than requested size
     void * end_addr = (void *)ptr_meta + sizeof(meta) + ptr_meta->size + sizeof(tag);
     if (end_addr < DATA_END) {
         meta * next_mem = end_addr;
@@ -441,89 +425,3 @@ meta ** _get_prev(meta * mta) {
 meta ** _get_next(meta * mta) {
     return (meta **)((void *)mta + sizeof(meta) + sizeof(meta **));
 }
-
-void _cycle_check(meta * check) {
-    meta * itr = FREE;
-    bool seen_free = false;
-    while (itr) {
-        if (itr == check) {
-            fprintf(stderr, "alloced block in free list\n");
-            exit(1);
-        }
-        if (itr == FREE) {
-            if (seen_free) {
-                fprintf(stderr, "Cycle!\n");
-                exit(1);
-            }
-
-            seen_free = true;
-        }
-
-        itr = *_get_next(itr);
-    }
-}
-
-// meta * _realloc_extend(meta * mta, size_t new_size) {
-//     if (_get_extend_size(mta) >= new_size) {
-//         if (mta > DATA_START) {
-//             tag * prev_mem_tag = (void *)mta - sizeof(tag);
-//             meta * prev_mem = (void *)tag - tag->size - sizeof(meta);
-
-//             if (!prev_mem->in_use) {
-//                 // TODO: Some realloc specific joining in here
-//                 _link_frees(*_get_prev(prev_mem), *_get_next(prev_mem));
-
-//                 if (FREE == prev_mem) {
-//                     FREE = *_get_next(prev_mem);
-//                 }
-
-//                 *_get_prev(prev_mem) = NULL;
-//                 *_get_next(prev_mem) = NULL;
-
-//                 prev_block->size = prev_block->size + sizeof(tag) + sizeof(meta) + mta->size;
-//                 tag * mta_tag = (tag *)((void *)mta + sizeof(meta) + mta->size);
-                
-//                 mta_tag->size = prev_block->size;
-
-
-//                 extended = true;
-//             }
-//         }
-
-//         void * end_addr = (void *)mta + sizeof(meta) + mta->size + sizeof(tag);
-//         if (end_addr < DATA_END) {
-//             meta * next_mem = end_addr;
-//             if (!next_mem->in_use) {
-//                 // TODO: Some realloc specific joining in here
-//                 extended = true;
-//             }
-//         }
-//     }
-
-//     return mta;
-// }
-
-// size_t _get_extend_size(meta * mta) {
-//     size_t extend_size = mta->size;
-
-//     if (mta > DATA_START) {
-//         tag * prev_mem_tag = (void *)mta - sizeof(tag);
-//         meta * prev_mem = (void *)tag - tag->size - sizeof(meta);
-
-//         if (!prev_mem->in_use) {
-//             // TODO: Some realloc specific joining in here
-//             extend_size += prev_mem->size + sizeof(tag) + sizeof(meta);
-//         }
-//     }
-
-//     void * end_addr = (void *)mta + sizeof(meta) + mta->size + sizeof(tag);
-//     if (end_addr < DATA_END) {
-//         meta * next_mem = end_addr;
-//         if (!next_mem->in_use) {
-//             // TODO: Some realloc specific joining in here
-//             extend_size += sizeof(tag) + sizeof(meta) + next_mem->size;
-//         }
-//     }
-
-//     return extend_size;
-// }
