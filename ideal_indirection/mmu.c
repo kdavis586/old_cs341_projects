@@ -8,6 +8,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+page_table_entry * _handle_get_pte(mmu * this, addr32 virtual_address,
+                                   size_t pid);
 
 mmu *mmu_create() {
     mmu *my_mmu = calloc(1, sizeof(mmu));
@@ -20,7 +22,24 @@ void mmu_read_from_virtual_address(mmu *this, addr32 virtual_address,
     assert(this);
     assert(pid < MAX_PROCESS_ID);
     assert(num_bytes + (virtual_address % PAGE_SIZE) <= PAGE_SIZE);
-    // TODO: Implement me!
+
+    page_table_entry * pte = _handle_get_pte(this, virtual_address, pid);
+    if (!pte) {
+        return;
+    }
+
+    vm_segmentation * addr_segmentation = find_segment(this->segmentations[this->curr_pid], virtual_address);
+    if (!(addr_segmentation->permissions & READ)) {
+        mmu_raise_segmentation_fault(this);
+        return;
+    }
+
+    
+    addr32 sim_phys_addr = (addr32)pte->base_addr << NUM_OFFSET_BITS | ((virtual_address << 20) >> 20);
+    void * real_addr = get_system_pointer_from_address(sim_phys_addr);
+
+    memcpy(buffer, real_addr, num_bytes - 1);
+    pte->accessed = true;
 }
 
 void mmu_write_to_virtual_address(mmu *this, addr32 virtual_address, size_t pid,
@@ -28,7 +47,70 @@ void mmu_write_to_virtual_address(mmu *this, addr32 virtual_address, size_t pid,
     assert(this);
     assert(pid < MAX_PROCESS_ID);
     assert(num_bytes + (virtual_address % PAGE_SIZE) <= PAGE_SIZE);
-    // TODO: Implement me!
+    
+    page_table_entry * pte = _handle_get_pte(this, virtual_address, pid);
+    if (!pte) {
+        return;
+    }
+
+    vm_segmentation * addr_segmentation = find_segment(this->segmentations[this->curr_pid], virtual_address);
+    if (!(addr_segmentation->permissions & READ)) {
+        mmu_raise_segmentation_fault(this);
+        return;
+    }
+
+    addr32 sim_phys_addr = (addr32)pte->base_addr << NUM_OFFSET_BITS | ((virtual_address << 20) >> 20);
+    void * real_addr = get_system_pointer_from_address(sim_phys_addr);
+
+    memcpy(real_addr, buffer, num_bytes);
+    pte->accessed = true;
+    pte->dirty = true;
+}
+
+page_table_entry * _handle_get_pte(mmu * this, addr32 virtual_address,
+                                   size_t pid) {
+    if (this->curr_pid != pid) {
+        // context switch, flush TLB
+        tlb_flush(&(this->tlb));
+        this->curr_pid = pid;
+    }
+
+    if (!address_in_segmentations(this->segmentations[this->curr_pid], virtual_address)) {
+        mmu_raise_segmentation_fault(this);
+        return NULL;
+    }
+
+    page_table_entry * pte = tlb_get_pte(&(this->tlb), virtual_address);
+    if (!pte) {
+        mmu_tlb_miss(this);
+
+        page_directory * pd = this->page_directories[this->curr_pid];
+        size_t pde_idx = (size_t)(virtual_address >> 22);
+        page_directory_entry * pde = &(pd->entries[pde_idx]);
+        if (!pde->present) {
+            mmu_raise_page_fault(this);
+            pde->base_addr = (ask_kernel_for_frame(NULL) >> NUM_OFFSET_BITS);
+            pde->user_supervisor = true;
+            pde->read_write = true;
+            pde->present = true;
+        }
+
+        page_table * pt = (page_table *)get_system_pointer_from_pde(pde); // BUG: This also probably isn't right
+        size_t pte_idx = (size_t)((virtual_address << 10) >> 22);
+        pte = &(pt->entries[pte_idx]);
+        tlb_add_pte(&(this->tlb), virtual_address, pte);
+    }
+
+    if (!pte->present) {
+        mmu_raise_page_fault(this);
+        pte->base_addr = (ask_kernel_for_frame(pte) >> NUM_OFFSET_BITS);
+        pte->user_supervisor = true;
+        pte->read_write = true;
+        pte->present = true;
+        read_page_from_disk(pte);
+    }
+
+    return pte;
 }
 
 void mmu_tlb_miss(mmu *this) {
