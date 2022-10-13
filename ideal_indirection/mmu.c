@@ -38,7 +38,7 @@ void mmu_read_from_virtual_address(mmu *this, addr32 virtual_address,
     addr32 sim_phys_addr = (addr32)pte->base_addr << NUM_OFFSET_BITS | ((virtual_address << 20) >> 20);
     void * real_addr = get_system_pointer_from_address(sim_phys_addr);
 
-    memcpy(buffer, real_addr, num_bytes - 1);
+    memcpy(buffer, real_addr, num_bytes);
     pte->accessed = true;
 }
 
@@ -80,7 +80,7 @@ page_table_entry * _handle_get_pte(mmu * this, addr32 virtual_address,
         return NULL;
     }
 
-    page_table_entry * pte = tlb_get_pte(&(this->tlb), virtual_address);
+    page_table_entry * pte = tlb_get_pte(&(this->tlb), virtual_address >> NUM_OFFSET_BITS);
     if (!pte) {
         mmu_tlb_miss(this);
 
@@ -98,7 +98,7 @@ page_table_entry * _handle_get_pte(mmu * this, addr32 virtual_address,
         page_table * pt = (page_table *)get_system_pointer_from_pde(pde); // BUG: This also probably isn't right
         size_t pte_idx = (size_t)((virtual_address << 10) >> 22);
         pte = &(pt->entries[pte_idx]);
-        tlb_add_pte(&(this->tlb), virtual_address, pte);
+        tlb_add_pte(&(this->tlb), virtual_address >> NUM_OFFSET_BITS, pte);
     }
 
     if (!pte->present) {
