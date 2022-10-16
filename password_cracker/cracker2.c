@@ -35,7 +35,6 @@ typedef struct _thread_job {
 } thread_job;
 
 void _handle_signal(int sig) {
-    fprintf(stderr, "Called here\n");
     exit(1);
 }
 

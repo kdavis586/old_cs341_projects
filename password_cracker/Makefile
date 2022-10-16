@@ -27,7 +27,7 @@ OBJS_TIMING=tools/$(EXE_TIMING).o libs/utils.o
 EXES_OPTIONAL=$(EXE_TIMING)
 
 # set up compiler
-CC = gcc
+CC = clang
 WARNINGS = -Wall -Wextra -Werror -Wno-error=unused-parameter
 INC=-Ilibs/
 CFLAGS_COMMON = $(WARNINGS) $(INC) -fPIC -std=c99 -c -MMD -MP -D_GNU_SOURCE -pthread
@@ -42,7 +42,7 @@ CFLAGS_TSAN_DEBUG += -fsanitize=thread -DSANITIZE_THREADS -fPIC
 CFLAGS_TSAN = $(CFLAGS_TSAN_DEBUG) -UDEBUG
 
 # set up linker
-LD = gcc
+LD = clang
 PROVIDED_LIBRARIES:=$(shell find libs/ -type f -name '*.a' 2>/dev/null)
 PROVIDED_LIBRARIES:=$(PROVIDED_LIBRARIES:libs/lib%.a=%)
 LDFLAGS = -Llibs/ $(foreach lib,$(PROVIDED_LIBRARIES),-l$(lib)) -lm

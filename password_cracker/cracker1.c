@@ -19,7 +19,6 @@ static int t_id = 0;
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
 void _handle_signal(int sig) {
-    fprintf(stderr, "Called here\n");
     exit(1);
 }
 
