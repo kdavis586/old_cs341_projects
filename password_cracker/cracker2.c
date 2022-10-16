@@ -201,6 +201,8 @@ int start(size_t thread_count) {
 
         double elapsed = getTime() - start;
         double elapsedcpu = getCPUTime() - startcpu;
+
+        pthread_mutex_lock(&lock);
         if (FOUND) {
             v2_print_summary(USERNAME, PASSWORD, TOTAL_HASHES, elapsed, elapsedcpu, 0);
         } else {
@@ -209,8 +211,11 @@ int start(size_t thread_count) {
         
         free(job_addr);
         free(PASSWORD);
+        pthread_mutex_unlock(&lock);
     }
+    pthread_mutex_lock(&lock);
     FINISHED = true;
+    pthread_mutex_unlock(&lock);
     pthread_barrier_wait(&main_barrier);
 
     // Join threads
