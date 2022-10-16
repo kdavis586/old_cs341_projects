@@ -27,7 +27,7 @@ static int TOTAL_HASHES;
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_barrier_t main_barrier;
 
-typedef struct _thread_job { 
+typedef struct _thread_job {
     char * hash;
     char * starting_str;
     char * ending_str;
