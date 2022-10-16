@@ -5,6 +5,7 @@
 #include "cracker2.h"
 #include "format.h"
 #include "utils.h"
+#include "includes/queue.h"
 
 #include <assert.h>
 #include <crypt.h>
@@ -20,6 +21,8 @@ static int t_id = 0;
 static char * USERNAME;
 static bool FINISHED;
 static bool FOUND;
+static char * PASSWORD;
+static int TOTAL_HASHES;
 
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_barrier_t main_barrier;
@@ -42,20 +45,25 @@ void * t_crack_pass(void * arg) {
         int tid = ++t_id;
     pthread_mutex_unlock(&lock);  
 
-    thread_job job = (thread_job) arg;
-    while (!FINISHED) { // might need to lock to avoid tsan error
+    thread_job * job = (thread_job * ) arg;
+    while (true) { // might need to lock to avoid tsan error
         pthread_barrier_wait(&main_barrier); // Allow main thread to populate job data
-        char * hash = job.hash;
-        char * guess = job.starting_str;
-        char * end_str = job.ending_str;
-        size_t offset = job.offset;
+        pthread_mutex_lock(&lock);
+        if (FINISHED) {
+            pthread_mutex_unlock(&lock);
+            return NULL;
+        }
+        pthread_mutex_unlock(&lock);
+        char * hash = job->hash;
+        char * guess = job->starting_str;
+        char * end_str = job->ending_str;
+        size_t offset = job->offset;
         pthread_barrier_wait(&main_barrier); // Allow main thread to start making next job
 
         pthread_mutex_lock(&lock);
         v2_print_thread_start(tid, USERNAME, offset, guess);
         pthread_mutex_unlock(&lock);
 
-        double start_time = getThreadCPUTime();
         // Attempt to find hash and collect data on hasing
         struct crypt_data cdata;
         cdata.initialized = 0;
@@ -65,9 +73,8 @@ void * t_crack_pass(void * arg) {
         while(strcmp(hash, guess_hash) != 0 && strcmp(guess, end_str) != 0) {
             pthread_mutex_lock(&lock);
             if (FOUND) {
-                v2_print_thread_result(tid, hash_count, 1);
-                break;
                 pthread_mutex_unlock(&lock);
+                break;
             }
             pthread_mutex_unlock(&lock);
 
@@ -75,15 +82,27 @@ void * t_crack_pass(void * arg) {
             guess_hash = crypt_r(guess, "xx", &cdata);
             hash_count++;
         }
-        // TODO: implement when thread did not find password in range
-        // TODO: implement when thread found password in range
-        double elapsed = getThreadCPUTime() - start_time;
-        // TODO: remove this
-        fprintf(stderr, "%f", elapsed);
+
+        pthread_mutex_lock(&lock);
+        if (!FOUND && strcmp(hash, guess_hash) == 0) {
+            // This thread found the password
+            FOUND = true;
+            PASSWORD = strdup(guess);
+            v2_print_thread_result(tid, hash_count, 0);
+        } else if (FOUND && strcmp(guess, end_str) != 0) {
+            // Not at the end of searching, we got halted
+            v2_print_thread_result(tid, hash_count, 1);
+        } else {
+            v2_print_thread_result(tid, hash_count, 2);
+        }
+        TOTAL_HASHES += hash_count;
+        pthread_mutex_unlock(&lock);
 
         free(hash);
         free(guess);
         free(end_str);
+
+        pthread_barrier_wait(&main_barrier);
     }   
 
     // FINISHED is true, return NULL
@@ -94,6 +113,7 @@ void * t_crack_pass(void * arg) {
 
 int start(size_t thread_count) {
     // Remember to ONLY crack passwords in other threads
+    pthread_barrier_init(&main_barrier, NULL, thread_count + 1);
     signal(SIGQUIT, _handle_signal);
 
     queue * job_queue = queue_create(-1);
@@ -122,51 +142,50 @@ int start(size_t thread_count) {
     // Create thread pool
     pthread_t tids[thread_count];
     thread_job t_jobs[thread_count];
+    size_t i;
     for (i = 0; i < thread_count; i++) {
         pthread_create(tids + i, NULL, t_crack_pass, (void *)(t_jobs + i));
     }
 
     // Start each queue interation here, format information, then allow threads to crack
-    pthread_barrier_init(&main_barrier, NULL, thread_count + 1);
     char * job;
     while((job = queue_pull(job_queue))) {
+        double start = getTime();
+        double startcpu = getCPUTime();
         // Populate CUR_LINE with a line from the queue
+        pthread_mutex_lock(&lock);
+        TOTAL_HASHES = 0;
         FOUND = false;
+        PASSWORD = NULL;
+        USERNAME = NULL;
+        pthread_mutex_unlock(&lock);
         // Get username, hash, and hint
         char * job_addr = job;
         
         pthread_mutex_lock(&lock);
-        USERNAME = strtok_r(line, " ", &line);
+        USERNAME = strtok_r(job, " ", &job);
         v2_print_start_user(USERNAME);
         pthread_mutex_unlock(&lock);
 
-        char * hash = strtok_r(NULL, " ", &line);
-        char * starting_str = strtok_r(NULL, " ", &line);
+        char * hash = strtok_r(NULL, " ", &job);
+        char * starting_str = strtok_r(NULL, " ", &job);
 
         // Set up string to start guessing on
         int prefix_len = getPrefixLength(starting_str);
-        memset(starting_str + prefix_len, 'a', strlen(starting_str) - prefix_len); // set periods to 'a'
-        total_versions = (size_t)pow((double)26, (double)(strlen(starting_str) - prefix_len));
-
-        assert(!strtok_r(NULL, " ", &line)); // Asserting no more arguments to parse
+        int unknown_letter_count = strlen(starting_str) - prefix_len;
+        memset(starting_str + prefix_len, 'a', unknown_letter_count); // set periods to 'a'
+        assert(!strtok_r(NULL, " ", &job)); // Asserting no more arguments to parse
 
         // Calculate chunk sizes for each thread
-        size_t chunk_size = total_versions / thread_count;
-        size_t extra = total_versions % thread_count;
-
-        size_t offset = 0;
         for (i = 0; i < thread_count; i++) {
             char * t_hash = strdup(hash);
             char * t_starting_str = strdup(starting_str);
+            long start_index = 0;
+            long count = 0;
 
-            t_jobs[i].offset = offset;
-            // get ending bound
-            offset += chunk_size;
-            if (extra) {
-                offset += 1;
-                extra--;
-            }
-            setStringPosition(starting_str, offset - 1);
+            getSubrange(unknown_letter_count, thread_count, i + 1, &start_index, &count);
+            t_jobs[i].offset = start_index;
+            setStringPosition(starting_str + prefix_len, start_index + count - 1);
             char * t_ending_str = strdup(starting_str);
             incrementString(starting_str);
 
@@ -178,6 +197,18 @@ int start(size_t thread_count) {
 
         pthread_barrier_wait(&main_barrier); // Let threads start cracking
         pthread_barrier_wait(&main_barrier); // Let threads read their job data
+        pthread_barrier_wait(&main_barrier); // Wait for threads to get an answer
+
+        double elapsed = getTime() - start;
+        double elapsedcpu = getCPUTime() - startcpu;
+        if (FOUND) {
+            v2_print_summary(USERNAME, PASSWORD, TOTAL_HASHES, elapsed, elapsedcpu, 0);
+        } else {
+            v2_print_summary(USERNAME, PASSWORD, TOTAL_HASHES, elapsed, elapsedcpu, 1);
+        }
+        
+        free(job_addr);
+        free(PASSWORD);
     }
     FINISHED = true;
     pthread_barrier_wait(&main_barrier);

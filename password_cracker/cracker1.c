@@ -111,7 +111,6 @@ int start(size_t thread_count) {
 
     // Inject NULL as many times as there are thread_count to help close threads
     // Idea: If thread pulls NULL from the queue, exit.
-    // TODO: extend this to thread_count, currently testing this with only one thread
     size_t i;
     for (i = 0; i < thread_count; i++) {
         queue_push(job_queue, NULL);
@@ -119,14 +118,12 @@ int start(size_t thread_count) {
 
 
     // Create thread pool
-    // TODO: extend this to thread_count, currently testing this with only one thread
     pthread_t tids[thread_count];
     for (i = 0; i < thread_count; i++) {
         pthread_create(tids + i, NULL, t_crack_pass, (void *) job_queue);
     }
 
     // Join threads
-    // TODO: exted this to thread_count, currently testing this with only one thread
     for (i = 0; i < thread_count; i++) {
         pthread_join(tids[i], NULL);
     }
