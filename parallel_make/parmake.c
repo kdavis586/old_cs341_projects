@@ -96,6 +96,7 @@ void _build_recursive(graph * g, set * rec_set, set * visited, void * cur) {
     
 
     set_remove(rec_set, cur); // Done with cur in the recursive stack, remove
+    vector_destroy(deps);
     return;
 }
 
