@@ -3,6 +3,9 @@
  * CS 341 - Fall 2022
  */
 #include <stdbool.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <sys/stat.h>
 
 #include "format.h"
 #include "graph.h"
@@ -11,11 +14,13 @@
 #include "set.h"
 
 static const int CYCLE_ERR = 2;
-//static const int ERR = 1;
+static const int ERR = 1;
+static const int OK = 0;
 
 // Forward declarations
 void build_goal_rule(graph * g, char * goal_rule);
 void _build_recursive(graph * g, set * rec_set, set * visited, void * cur);
+void run_commands(rule_t * cur_rule);
 
 int parmake(char *makefile, size_t num_threads, char **targets) {
     graph * dep_graph = parser_parse_makefile(makefile, targets);
@@ -59,18 +64,42 @@ void _build_recursive(graph * g, set * rec_set, set * visited, void * cur) {
     set_add(rec_set, cur);
     set_add(visited, cur);
     vector * deps = graph_neighbors(g, cur);
+    rule_t * cur_rule = graph_get_vertex_value(g, cur);
     VECTOR_FOR_EACH(deps, dep, {
         _build_recursive(g, rec_set, visited, dep);
         rule_t * dep_rule = graph_get_vertex_value(g, dep);
-        if (dep_rule->state != 0) {
-            rule_t * cur_rule = graph_get_vertex_value(g, cur);
-
+        if (dep_rule->state != OK) {
             // Set state to highest value (0 -> good, 1 -> general fail, 2 -> cycle fail)
             cur_rule->state = cur_rule->state < dep_rule->state ? dep_rule->state : cur_rule->state;
         }
     });
-    set_remove(rec_set, cur); // Done with cur in the recursive stack, remove
 
+    // Run rule commands if no failure from dependencies
+    if (cur_rule->state == OK) {
+        struct stat buf;
+        if (stat((char *)cur, &buf) == 0) {
+            // cur is a file on disk
+            // TODO: handle when the rule name is a file on the disk
+            fprintf(stderr, "here\n");
+        } else {
+            // cur is /not/ a file on disk and all dependencies should have run
+            run_commands(cur_rule);
+        }
+    }
+    
+
+    set_remove(rec_set, cur); // Done with cur in the recursive stack, remove
     return;
+}
+
+void run_commands(rule_t * cur_rule) {
+    int success = 0;
+    VECTOR_FOR_EACH(cur_rule->commands, command, {
+        if ((success = system((char *)command)) != 0) {
+            fprintf(stderr, "Command: %s\n", (char *)command);
+            cur_rule->state = ERR;
+            break;
+        };
+    });
 }
 
