@@ -19,18 +19,23 @@ static const int ERR = 1;
 static const int OK = 0;
 
 // Forward declarations
+void cycle_detect(graph * g, char * goal_rule);
+void _cycle_detect_recursive(graph * g, set * rec_set, set * visited, void * cur);
 void build_goal_rule(graph * g, char * goal_rule);
-void _build_recursive(graph * g, set * rec_set, set * visited, void * cur);
+void _build_recursive(graph * g, set * visited, void * cur);
 void run_commands(rule_t * cur_rule);
 
 int parmake(char *makefile, size_t num_threads, char **targets) {
     graph * dep_graph = parser_parse_makefile(makefile, targets);
     vector * goal_names = graph_neighbors(dep_graph, "");
+
     VECTOR_FOR_EACH(goal_names, goal, {
-        build_goal_rule(dep_graph, goal);
+        cycle_detect(dep_graph, goal);
         rule_t * goal_rule = graph_get_vertex_value(dep_graph, goal);
         if (goal_rule->state == CYCLE_ERR) {
             print_cycle_failure(goal);
+        } else {
+            build_goal_rule(dep_graph, goal);
         }
     });
 
@@ -41,11 +46,11 @@ int parmake(char *makefile, size_t num_threads, char **targets) {
 
 
 // Helper Functions
-void build_goal_rule(graph * g, char * goal_rule) {
+void cycle_detect(graph * g, char * goal_rule) {
     set * rec_set = shallow_set_create();
     set * visited = shallow_set_create();
-
-    _build_recursive(g, rec_set, visited, (void *)goal_rule);
+    
+    _cycle_detect_recursive(g, rec_set, visited, (void *)goal_rule);
 
     set_destroy(rec_set);
     set_destroy(visited);
@@ -53,7 +58,7 @@ void build_goal_rule(graph * g, char * goal_rule) {
     return;
 }
 
-void _build_recursive(graph * g, set * rec_set, set * visited, void * cur) {
+void _cycle_detect_recursive(graph * g, set * rec_set, set * visited, void * cur) {
     if (set_contains(rec_set, cur)) {
         rule_t * rule = graph_get_vertex_value(g, cur);
         rule->state = CYCLE_ERR;
@@ -67,11 +72,42 @@ void _build_recursive(graph * g, set * rec_set, set * visited, void * cur) {
     vector * deps = graph_neighbors(g, cur);
     rule_t * cur_rule = graph_get_vertex_value(g, cur);
     VECTOR_FOR_EACH(deps, dep, {
-        _build_recursive(g, rec_set, visited, dep);
+        _cycle_detect_recursive(g, rec_set, visited, dep);
+        rule_t * dep_rule = graph_get_vertex_value(g, dep);
+        if (dep_rule->state != OK) {
+            // in cycle_detect, only non-OK state is CYCLE-ERR, assign and break;
+            cur_rule->state = dep_rule->state;
+            break;
+        }
+    });
+
+    set_remove(rec_set, cur); // Done with cur in the recursive stack, remove
+    vector_destroy(deps);
+    return;
+}
+
+// DOES NOT CHECK FOR CYCLES WHILE RUNNING
+void build_goal_rule(graph * g, char * goal_rule) {
+    set * visited = shallow_set_create();
+    _build_recursive(g, visited, (void *)goal_rule);
+    set_destroy(visited);
+    return;
+}
+
+void _build_recursive(graph * g, set * visited, void * cur) {
+    rule_t * cur_rule = graph_get_vertex_value(g, cur);
+    if (set_contains(visited, cur)) {
+        return;
+    }
+
+    set_add(visited, cur);
+    vector * deps = graph_neighbors(g, cur);
+    VECTOR_FOR_EACH(deps, dep, {
+        _build_recursive(g, visited, dep);
         rule_t * dep_rule = graph_get_vertex_value(g, dep);
         if (dep_rule->state != OK) {
             // Set state to highest value (0 -> good, 1 -> general fail, 2 -> cycle fail)
-            cur_rule->state = cur_rule->state < dep_rule->state ? dep_rule->state : cur_rule->state;
+            cur_rule->state = dep_rule->state;
         }
     });
 
@@ -94,8 +130,6 @@ void _build_recursive(graph * g, set * rec_set, set * visited, void * cur) {
         }
     }
     
-
-    set_remove(rec_set, cur); // Done with cur in the recursive stack, remove
     vector_destroy(deps);
     return;
 }
