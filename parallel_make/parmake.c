@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <sys/stat.h>
+#include <time.h>
 
 #include "format.h"
 #include "graph.h"
@@ -79,8 +80,14 @@ void _build_recursive(graph * g, set * rec_set, set * visited, void * cur) {
         struct stat buf;
         if (stat((char *)cur, &buf) == 0) {
             // cur is a file on disk
-            // TODO: handle when the rule name is a file on the disk
-            fprintf(stderr, "here\n");
+            time_t cur_mod_time = buf.st_mtime;
+            VECTOR_FOR_EACH(deps, dep, {
+                struct stat dep_buf;
+                if (stat((char *)dep, &dep_buf) == 0 && cur_mod_time < dep_buf.st_mtime) {
+                    run_commands(cur_rule);
+                    break;
+                }
+            });
         } else {
             // cur is /not/ a file on disk and all dependencies should have run
             run_commands(cur_rule);
