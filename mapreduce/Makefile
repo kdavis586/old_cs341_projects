@@ -86,10 +86,10 @@ pi: mapper_pi reducer_pi
 data: data/alice.txt data/dracula.txt
 
 data/alice.txt:
-		curl "http://www.gutenberg.org/files/11/11.txt" > data/alice.txt
+		curl -L "https://www.gutenberg.org/files/11/11-0.txt" > data/alice.txt
 
 data/dracula.txt:
-		curl "http://www.gutenberg.org/cache/epub/345/pg345.txt" > data/dracula.txt
+		curl -L "http://www.gutenberg.org/cache/epub/345/pg345.txt" > data/dracula.txt
 
 # include dependencies
 ROOT_DIR:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
