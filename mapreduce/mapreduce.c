@@ -10,14 +10,18 @@
 
 #include "utils.h"
 
+// forward declarations
+void close_other_pipes(size_t process_index, int ** pipe_list, size_t pipe_list_len);
+
 int main(int argc, char **argv) {
     if (argc != 6) {
         print_usage();
+        exit(1);
     }
     char * input_file = argv[1];
-    // char * output_file = argv[2];
-    // char * map_exc = argv[3];
-    // char * red_exc = argv[4];
+    char * output_file_name = argv[2];
+    char * map_exc = argv[3];
+    char * red_exc = argv[4];
     size_t mapper_count = 0;
     if (sscanf(argv[5], "%zu", &mapper_count) != 1) {
         fprintf(stderr, "Failed to get mapper count.\n");
@@ -27,16 +31,14 @@ int main(int argc, char **argv) {
     int * mapper_pipes[mapper_count];
     size_t i;
     for (i = 0; i < mapper_count; i++) {
-        int fh[2];
-        int success = pipe(fh);
+        mapper_pipes[i] = malloc(sizeof(int) * 2);
+        int success = pipe(mapper_pipes[i]);
 
         if (success == -1) {
             // error
             perror("Error making mapper pipe");
             exit(1);
         }
-
-        mapper_pipes[i] = fh;
     }
 
     // Create one input pipe for the reducer.
@@ -64,6 +66,11 @@ int main(int argc, char **argv) {
         }
 
         if (splitter_child == 0) {
+            // close all pipes that are not index i
+            close_other_pipes(i, mapper_pipes, mapper_count);
+            close(reduce_pipe[0]);
+            close(reduce_pipe[1]);
+
             // is child
             // we do not need to read here
             if (close(mapper_pipes[i][0]) == -1) {
@@ -71,14 +78,19 @@ int main(int argc, char **argv) {
                 exit(1);
             }
             // create command arr
+
+            // turn numbers into strings
             char mapper_count_str[100];
             char index_str[100];
             snprintf(mapper_count_str, sizeof(mapper_count), "%zu", mapper_count);
             snprintf(index_str, sizeof(index_str), "%zu", i);
+
             char * command_arr[5] = {splitter, input_file, mapper_count_str, index_str, NULL};
 
-            dup2(mapper_pipes[i][1], 1); // redirect pipe's stdout
+            dup2(mapper_pipes[i][1], STDOUT_FILENO); // redirect pipe's stdout
             execv(splitter, command_arr);
+
+            print_nonzero_exit_status(splitter, 1);
             exit(1);
         }
         splitters[i] = splitter_child;
@@ -90,46 +102,66 @@ int main(int argc, char **argv) {
         }
 
         if (mapper_child == 0) {
-            // is child
+            // close all pipes that are not index i
+            close_other_pipes(i, mapper_pipes, mapper_count);
+            close(reduce_pipe[0]); // do not need to read from the reducer pipe
+
             // we do not need to write here
             if (close(mapper_pipes[i][1]) == -1) {
                 perror("Failed to close read side of pipe for mapper");
                 exit(1);
             }
 
-            dup2(mapper_pipes[i][0], 0);
+            dup2(mapper_pipes[i][0], STDIN_FILENO); // read from the pipe via stdin -> mapper function will need this
+            dup2(reduce_pipe[1], STDOUT_FILENO);
 
-            ssize_t chars_read;
-            char * buf;
-            size_t size;
-            while ((chars_read = getline(&buf, &size, stdin)) != -1) {
-                fprintf(stderr, "MAPPER CHILD %zu: %s", i, buf);
-            }
+            char * command_arr[2] = {map_exc, NULL};
+            execv(map_exc, command_arr);
 
-            exit(0);
+            print_nonzero_exit_status(map_exc, 1);
+            exit(1);
         }
         mappers[i] = mapper_child;
     }
+    
+    pid_t reduce_child;
+    if ((reduce_child = fork()) == -1) {
+        perror("Failed to create reduce child");
+        exit(1);
+    }
 
+    if (reduce_child == 0) {
+        close_other_pipes(mapper_count + 1, mapper_pipes, mapper_count);
+        close(reduce_pipe[1]); // won't need to write
+
+        dup2(reduce_pipe[0], STDIN_FILENO);
+        FILE * output_file = fopen(output_file_name, "w");
+        if (!output_file) {
+            perror("Failed to open file for writing");
+            exit(1);
+        }
+
+        dup2(fileno(output_file), STDOUT_FILENO);
+
+        char * command_arr[2] = {red_exc, NULL};
+        execv(red_exc, command_arr);
+        exit(1);
+    }
+
+
+    // close splitter and mapper pipes in the parent process
+    close_other_pipes(mapper_count + 1, mapper_pipes, mapper_count);
+
+    // wait on the child processes to finish
     for (i = 0; i < mapper_count; i++) {
         int splitter_status;
         waitpid(splitters[i], &splitter_status, 0);
         int mapper_status;
         waitpid(mappers[i], &mapper_status, 0);
+        free(mapper_pipes[i]);
     }
-    // // Start a splitter process for each mapper.
-    //     pid_t child;
-    //     if ((child = fork()) == -1) {
-    //         perror("Failed to create child\n");
-    //     }
 
-    //     if (child == 0) {
-    //         // child process
-            
 
-    //         // Start all the mapper processes.
-    //         exit(1);
-    //     }
         
 
     // Start the reducer process.
@@ -141,4 +173,15 @@ int main(int argc, char **argv) {
     // Count the number of lines in the output file.
 
     return 0;
+}
+
+// if process index > pipe_list_len, close all pipes
+void close_other_pipes(size_t process_index, int ** pipe_list, size_t pipe_list_len) {
+    size_t i;
+    for (i = 0; i < pipe_list_len; i++) {
+        if (i != process_index || process_index > pipe_list_len) {
+            close(pipe_list[i][0]);
+            close(pipe_list[i][1]);
+        }
+    }
 }
