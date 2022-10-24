@@ -130,6 +130,7 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
+    // Start the reducer process.
     if (reduce_child == 0) {
         close_other_pipes(mapper_count + 1, mapper_pipes, mapper_count);
         close(reduce_pipe[1]); // won't need to write
@@ -145,13 +146,16 @@ int main(int argc, char **argv) {
 
         char * command_arr[2] = {red_exc, NULL};
         execv(red_exc, command_arr);
+        print_nonzero_exit_status(red_exc, 1);
         exit(1);
     }
 
 
     // close splitter and mapper pipes in the parent process
     close_other_pipes(mapper_count + 1, mapper_pipes, mapper_count);
-
+    close(reduce_pipe[0]);
+    close(reduce_pipe[1]);
+    
     // wait on the child processes to finish
     for (i = 0; i < mapper_count; i++) {
         int splitter_status;
@@ -161,17 +165,13 @@ int main(int argc, char **argv) {
         free(mapper_pipes[i]);
     }
 
-
-        
-
-    // Start the reducer process.
-
     // Wait for the reducer to finish.
-
+    int reduce_status;
+    waitpid(reduce_child, &reduce_status, 0);
     // Print nonzero subprocess exit codes.
 
     // Count the number of lines in the output file.
-
+    print_num_lines(output_file_name);
     return 0;
 }
 
