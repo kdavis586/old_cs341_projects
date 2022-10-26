@@ -1,17 +1,20 @@
 1) What is a socket?
-
+    An endpoint for communication in a network node.
 
 2) What is the difference between the domains AF_INET and AF_UNIX?
-
+    AF_UNIX is for local communication,
+    AF_INET is for IPv4 internet protocols
 
 3) What is the difference between SOCK_STREAM and SOCK_DGRAM?
-
+    SOCK_STREAM provides sequenced, reliable, two-way, connection-based byte streams.
+    SOCK_DGRAM supports datagrams (connectionless, unreliable messages of a fiexed maximum length)
 
 4) Why is it important to clear all the values the addrinfo struct before using it in getaddrinfo?
-
+    You do not know what the values of the struct are otherwise (especially in long running programs that are reusing stack memory)
 
 5) What are ai_family and ai_socktype?
-
+    ai_family specifies which type of addressing to use local, IPv4, IPv6
+    ai_socktype specifies which type of connection to use (TCP vs UDP)
 
 6) What does getaddrinfo do?
 

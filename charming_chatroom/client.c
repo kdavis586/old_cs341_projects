@@ -47,12 +47,31 @@ int connect_to_server(const char *host, const char *port) {
     /*QUESTION 3*/
 
     /*QUESTION 4*/
-    /*QUESTION 5*/
+    struct addrinfo hints, *result;
+    memset(&hints, 0, sizeof(struct addrinfo));
+    hints.ai_family = AF_INET;
+    hints.socktype = SOCK_STREAM;
 
-    /*QUESTION 6*/
+    int getaddr_result = getaddrinfo(host, port, &hints, &result);
+    if (getaddr_result != 0) {
+        fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(success));
+        exit(1);
+    }
 
-    /*QUESTION 7*/
-    return -1;
+    int sock_fd = socket(result->ai_family, result->ai_type, result->ai_protocol);
+    if (sock_fd == -1) {
+        perror("Creating socket failed");
+        exit(1);
+    }
+
+    int connect_result = connect(sock_fd, result->ai_addr, result->ai_addrlen);
+    if (connect_result == -1) {
+        perror("connect failed");
+        close(sock_fd);
+        exit(1);
+    }
+    
+    return sock_fd;
 }
 
 typedef struct _thread_cancel_args {
