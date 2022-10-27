@@ -26,6 +26,9 @@ static volatile int endSession;
 static volatile int clientsCount;
 static volatile int clients[MAX_CLIENTS];
 
+// my globals
+static struct addrinfo * RESULT;
+
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /**
@@ -56,6 +59,8 @@ void cleanup() {
             close(clients[i]);
         }
     }
+
+    free(RESULT);
 }
 
 /**
@@ -78,18 +83,65 @@ void run_server(char *port) {
     /*QUESTION 1*/
     /*QUESTION 2*/
     /*QUESTION 3*/
-
+    serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+    if (serverSocket == -1) {
+        perror("Creating socket failed");
+        exit(1);
+    }
     /*QUESTION 8*/
-
+    const int enable = 1;
+    if (setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) == -1) {
+        perror("setsockopt for SO_REUSEADDR failed");
+        cleanup();
+        exit(1);
+    }
+    if (setsockopt(serverSocket, SOL_SOCKET, SO_REUSEPORT, &enable, sizeof(int)) == -1) {
+        perror("setsockopt for SO_REUSEPORT failed");
+        cleanup();
+        exit(1);
+    }
     /*QUESTION 4*/
     /*QUESTION 5*/
     /*QUESTION 6*/
-
+    struct addrinfo hints;
+    memset(&hints, 0, sizeof(struct addrinfo));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE;
+    
+    int getaddr_result = getaddrinfo(NULL, port, &hints, &RESULT);
+    if (getaddr_result != 0) {
+        fprintf(stderr, "%s\n", gai_strerror(getaddr_result));
+        cleanup();
+        exit(1);
+    }
     /*QUESTION 9*/
-
+    if (bind(serverSocket, RESULT->ai_addr, RESULT->ai_addrlen)) {
+        perror(NULL);
+        cleanup();
+        exit(1);
+    }
     /*QUESTION 10*/
 
+    if (listen(serverSocket, MAX_CLIENTS) == -1) {
+        perror(NULL);
+        cleanup();
+        exit(1);
+    }
     /*QUESTION 11*/
+
+    int client_fd = 0;
+    while (endSession == 0) {
+        if ((client_fd = accept(serverSocket, NULL, NULL)) == -1) {
+            perror(NULL);
+            cleanup();
+            exit(1);
+        }
+        clients[clientsCount] = client_fd;
+        clientsCount++;
+
+        process_client((void *)(intptr_t)(clientsCount - 1));
+    }
 }
 
 /**

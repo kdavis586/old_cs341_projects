@@ -56,28 +56,28 @@ int connect_to_server(const char *host, const char *port) {
     struct addrinfo hints;
     memset(&hints, 0, sizeof(struct addrinfo));
     hints.ai_family = AF_INET;
-    hints.socktype = SOCK_STREAM;
+    hints.ai_socktype = SOCK_STREAM;
 
     int getaddr_result = getaddrinfo(host, port, &hints, &RESULT);
     if (getaddr_result != 0) {
-        fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(success));
+        fprintf(stderr, "%s\n", gai_strerror(getaddr_result));
         exit(1);
     }
 
-    int CLIENT_SOCK_FD = socket(result->ai_family, result->ai_type, result->ai_protocol);
+    int CLIENT_SOCK_FD = socket(RESULT->ai_family, RESULT->ai_socktype, RESULT->ai_protocol);
     if (CLIENT_SOCK_FD == -1) {
-        perror("Creating socket failed");
+        perror(NULL);
         exit(1);
     }
 
-    int connect_result = connect(sock_fd, result->ai_addr, result->ai_addrlen);
+    int connect_result = connect(CLIENT_SOCK_FD, RESULT->ai_addr, RESULT->ai_addrlen);
     if (connect_result == -1) {
-        perror("connect failed");
+        perror(NULL);
         close(CLIENT_SOCK_FD);
         exit(1);
     }
     
-    return sock_fd;
+    return CLIENT_SOCK_FD;
 }
 
 typedef struct _thread_cancel_args {
