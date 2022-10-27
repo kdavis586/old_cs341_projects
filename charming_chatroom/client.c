@@ -21,7 +21,6 @@ static volatile int serverSocket;
 static pthread_t threads[2];
 
 // my globals
-static int CLIENT_SOCK_FD;
 static struct addrinfo * RESULT;
 
 void *write_to_server(void *arg);
@@ -34,7 +33,6 @@ void close_program(int signal);
  */
 void close_server_connection() {
     // Your code here
-    close(CLIENT_SOCK_FD);
     free(RESULT);
 }
 
@@ -64,20 +62,20 @@ int connect_to_server(const char *host, const char *port) {
         exit(1);
     }
 
-    int CLIENT_SOCK_FD = socket(RESULT->ai_family, RESULT->ai_socktype, RESULT->ai_protocol);
-    if (CLIENT_SOCK_FD == -1) {
+    int socket_fd = socket(RESULT->ai_family, RESULT->ai_socktype, RESULT->ai_protocol);
+    if (socket_fd == -1) {
         perror(NULL);
         exit(1);
     }
 
-    int connect_result = connect(CLIENT_SOCK_FD, RESULT->ai_addr, RESULT->ai_addrlen);
+    int connect_result = connect(socket_fd, RESULT->ai_addr, RESULT->ai_addrlen);
     if (connect_result == -1) {
         perror(NULL);
-        close(CLIENT_SOCK_FD);
+        close(socket_fd);
         exit(1);
     }
     
-    return CLIENT_SOCK_FD;
+    return socket_fd;
 }
 
 typedef struct _thread_cancel_args {
@@ -132,8 +130,9 @@ void *write_to_server(void *arg) {
         size_t len = strlen(msg) + 1;
 
         retval = write_message_size(len, serverSocket);
-        if (retval > 0)
+        if (retval > 0) {
             retval = write_all_to_socket(serverSocket, msg, len);
+        }
 
         free(msg);
         msg = NULL;

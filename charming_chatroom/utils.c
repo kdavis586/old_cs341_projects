@@ -24,8 +24,10 @@ ssize_t get_message_size(int socket) {
     int32_t size;
     ssize_t read_bytes =
         read_all_from_socket(socket, (char *)&size, MESSAGE_SIZE_DIGITS);
-    if (read_bytes == 0 || read_bytes == -1)
+    if (read_bytes == 0 || read_bytes == -1) {
         return read_bytes;
+    }
+        
 
     return (ssize_t)ntohl(size);
 }
@@ -34,23 +36,16 @@ ssize_t get_message_size(int socket) {
 ssize_t write_message_size(size_t size, int socket) {
     // Your code here
     ssize_t written_bytes = 
-        write_all_to_socket(socket, (char *)&size, MESSAGE_SIZE_DIGITS);
+        write(socket, (char *)&size, 4);
     if (written_bytes == 0 || written_bytes == -1) {
         return written_bytes;
     }
 
-    return (ssize_t)ntohl(size);
+    return written_bytes;
 }
 
 ssize_t read_all_from_socket(int socket, char *buffer, size_t count) {
-    ssize_t total_read = 0;
-    while ((size_t)total_read < count) {
-        ssize_t cur_read = read(socket, &buffer + total_read, count - (size_t)total_read);
-        if (cur_read == 0 || cur_read == -1) {
-            return cur_read;
-        }
-        total_read += cur_read;
-    }
+    ssize_t total_read = read(socket, buffer, count);
 
     return total_read;
 }
@@ -58,7 +53,7 @@ ssize_t read_all_from_socket(int socket, char *buffer, size_t count) {
 ssize_t write_all_to_socket(int socket, const char *buffer, size_t count) {
     ssize_t total_write = 0;
     while ((size_t)total_write < count) {
-        ssize_t cur_write = write(socket, &buffer + total_write, count - (size_t)total_write);
+        ssize_t cur_write = write(socket, buffer + total_write, count - (size_t)total_write);
         if (cur_write == 0 || cur_write == -1) {
             return cur_write;
         }

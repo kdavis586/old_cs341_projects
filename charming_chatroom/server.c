@@ -25,6 +25,7 @@ static volatile int endSession;
 
 static volatile int clientsCount;
 static volatile int clients[MAX_CLIENTS];
+static pthread_t tids[MAX_CLIENTS];
 
 // my globals
 static struct addrinfo * RESULT;
@@ -37,6 +38,11 @@ static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
  */
 void close_server() {
     endSession = 1;
+    free(RESULT);
+    size_t i;
+    for (i = 0; i < (size_t)clientsCount; i++) {
+        pthread_join(tids[i], NULL);
+    }
     // add any additional flags here you want.
 }
 
@@ -59,8 +65,6 @@ void cleanup() {
             close(clients[i]);
         }
     }
-
-    free(RESULT);
 }
 
 /**
@@ -137,10 +141,10 @@ void run_server(char *port) {
             cleanup();
             exit(1);
         }
-        clients[clientsCount] = client_fd;
-        clientsCount++;
 
-        process_client((void *)(intptr_t)(clientsCount - 1));
+        clients[clientsCount] = client_fd;
+        pthread_create(&tids[clientsCount], NULL, process_client, (void *)(intptr_t)(clientsCount));
+        clientsCount++; // TODO: Fix how I assign client ids...
     }
 }
 
@@ -186,8 +190,9 @@ void *process_client(void *p) {
             buffer = calloc(1, retval);
             retval = read_all_from_socket(clients[clientId], buffer, retval);
         }
-        if (retval > 0)
+        if (retval > 0) {
             write_to_clients(buffer, retval);
+        }
 
         free(buffer);
         buffer = NULL;
