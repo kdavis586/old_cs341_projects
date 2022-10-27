@@ -20,6 +20,10 @@
 static volatile int serverSocket;
 static pthread_t threads[2];
 
+// my globals
+static int CLIENT_SOCK_FD;
+static struct addrinfo * RESULT;
+
 void *write_to_server(void *arg);
 void *read_from_server(void *arg);
 void close_program(int signal);
@@ -30,6 +34,8 @@ void close_program(int signal);
  */
 void close_server_connection() {
     // Your code here
+    close(CLIENT_SOCK_FD);
+    free(RESULT);
 }
 
 /**
@@ -47,19 +53,19 @@ int connect_to_server(const char *host, const char *port) {
     /*QUESTION 3*/
 
     /*QUESTION 4*/
-    struct addrinfo hints, *result;
+    struct addrinfo hints;
     memset(&hints, 0, sizeof(struct addrinfo));
     hints.ai_family = AF_INET;
     hints.socktype = SOCK_STREAM;
 
-    int getaddr_result = getaddrinfo(host, port, &hints, &result);
+    int getaddr_result = getaddrinfo(host, port, &hints, &RESULT);
     if (getaddr_result != 0) {
         fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(success));
         exit(1);
     }
 
-    int sock_fd = socket(result->ai_family, result->ai_type, result->ai_protocol);
-    if (sock_fd == -1) {
+    int CLIENT_SOCK_FD = socket(result->ai_family, result->ai_type, result->ai_protocol);
+    if (CLIENT_SOCK_FD == -1) {
         perror("Creating socket failed");
         exit(1);
     }
@@ -67,7 +73,7 @@ int connect_to_server(const char *host, const char *port) {
     int connect_result = connect(sock_fd, result->ai_addr, result->ai_addrlen);
     if (connect_result == -1) {
         perror("connect failed");
-        close(sock_fd);
+        close(CLIENT_SOCK_FD);
         exit(1);
     }
     
