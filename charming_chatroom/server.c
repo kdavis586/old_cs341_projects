@@ -59,6 +59,7 @@ void cleanup() {
 
     for (int i = 0; i < MAX_CLIENTS; i++) {
         if (clients[i] != -1) {
+            fprintf(stderr, "client_fd at iter %d: %d\n", i, clients[i]);
             if (shutdown(clients[i], SHUT_RDWR) != 0) {
                 perror("shutdown(): ");
             }
@@ -84,6 +85,10 @@ void cleanup() {
  *    - perror() for any other call
  */
 void run_server(char *port) {
+    size_t i;
+    for (i = 0; i < MAX_CLIENTS; i++) {
+        clients[i] = -1;
+    }
     /*QUESTION 1*/
     /*QUESTION 2*/
     /*QUESTION 3*/
@@ -142,9 +147,15 @@ void run_server(char *port) {
             exit(1);
         }
 
-        clients[clientsCount] = client_fd;
-        pthread_create(&tids[clientsCount], NULL, process_client, (void *)(intptr_t)(clientsCount));
-        clientsCount++; // TODO: Fix how I assign client ids...
+        size_t i;
+        for (i = 0; i < MAX_CLIENTS; i++) {
+            if (clients[i] == -1){
+                clients[i] = client_fd;
+                clientsCount++;
+                pthread_create(&tids[i], NULL, process_client, (void *)(intptr_t)(i));
+                break;
+            }
+        }
     }
 }
 
