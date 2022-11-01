@@ -7,6 +7,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdbool.h>
+#include <errno.h>
+#include <signal.h>
 
 #include "utils.h"
 static const size_t MESSAGE_SIZE_DIGITS = 4;
@@ -28,15 +31,15 @@ ssize_t get_message_size(int socket) {
         return read_bytes;
     }
         
-
     return (ssize_t)ntohl(size);
 }
 
 // You may assume size won't be larger than a 4 byte integer
 ssize_t write_message_size(size_t size, int socket) {
     // Your code here
+    int32_t converted = (int32_t)htonl(size);
     ssize_t written_bytes = 
-        write(socket, (char *)&size, 4);
+        write_all_to_socket(socket, (char *)&converted, MESSAGE_SIZE_DIGITS);
     if (written_bytes == 0 || written_bytes == -1) {
         return written_bytes;
     }
@@ -45,20 +48,37 @@ ssize_t write_message_size(size_t size, int socket) {
 }
 
 ssize_t read_all_from_socket(int socket, char *buffer, size_t count) {
-    ssize_t total_read = read(socket, buffer, count);
+    size_t total_read = 0;
+    while (total_read < count) {
+        ssize_t cur_read = read(socket, buffer, count);
+        if (cur_read == 0) {
+            return total_read;
+        } else if (cur_read > 0) {
+            total_read += (size_t)cur_read;
+        } else if (cur_read == -1 && errno == SIGINT) {
+            continue;
+        } else {
+            return -1;
+        }
+    }
 
     return total_read;
 }
 
 ssize_t write_all_to_socket(int socket, const char *buffer, size_t count) {
-    ssize_t total_write = 0;
-    while ((size_t)total_write < count) {
-        ssize_t cur_write = write(socket, buffer + total_write, count - (size_t)total_write);
-        if (cur_write == 0 || cur_write == -1) {
-            return cur_write;
+    size_t total_wrote = 0;
+    while (total_wrote < count) {
+        ssize_t cur_read = write(socket, buffer, count);
+        if (cur_read == 0) {
+            return total_wrote;
+        } else if (cur_read > 0) {
+            total_wrote += (size_t)cur_read;
+        } else if (cur_read == -1 && errno == SIGINT) {
+            continue;
+        } else {
+            return -1;
         }
-        total_write += cur_write;
     }
 
-    return total_write;
+    return total_wrote;
 }

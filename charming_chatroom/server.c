@@ -40,7 +40,7 @@ void close_server() {
     endSession = 1;
     free(RESULT);
     size_t i;
-    for (i = 0; i < (size_t)clientsCount; i++) {
+    for (i = 0; i < MAX_CLIENTS; i++) {
         pthread_join(tids[i], NULL);
     }
     // add any additional flags here you want.
@@ -84,6 +84,10 @@ void cleanup() {
  *    - perror() for any other call
  */
 void run_server(char *port) {
+    size_t i;
+    for (i = 0; i < MAX_CLIENTS; i++) {
+        clients[i] = -1;
+    }
     /*QUESTION 1*/
     /*QUESTION 2*/
     /*QUESTION 3*/
@@ -198,7 +202,6 @@ void *process_client(void *p) {
         buffer = NULL;
     }
 
-    printf("User %d left\n", (int)clientId);
     close(clients[clientId]);
 
     pthread_mutex_lock(&mutex);
