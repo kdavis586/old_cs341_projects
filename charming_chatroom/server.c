@@ -16,7 +16,7 @@
 
 #include "utils.h"
 
-#define MAX_CLIENTS 8
+#define MAX_CLIENTS 2
 
 void *process_client(void *p);
 
@@ -146,9 +146,14 @@ void run_server(char *port) {
             exit(1);
         }
 
-        clients[clientsCount] = client_fd;
-        pthread_create(&tids[clientsCount], NULL, process_client, (void *)(intptr_t)(clientsCount));
-        clientsCount++; // TODO: Fix how I assign client ids...
+        for (i = 0; i < MAX_CLIENTS; i++) {
+            if (clients[i] == -1) {
+                clients[i] = client_fd;
+                clientsCount++;
+                pthread_create(tids + i, NULL, process_client, (void *)(intptr_t)i);
+                break;
+            }
+        }
     }
 }
 
