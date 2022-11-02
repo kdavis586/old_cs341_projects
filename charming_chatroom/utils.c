@@ -12,7 +12,6 @@
 #include <signal.h>
 
 #include "utils.h"
-#include "user_hooks.h"
 static const size_t MESSAGE_SIZE_DIGITS = 4;
 
 char *create_message(char *name, char *message) {

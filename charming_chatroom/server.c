@@ -16,7 +16,7 @@
 
 #include "utils.h"
 
-#define MAX_CLIENTS 2
+#define MAX_CLIENTS 8
 
 void *process_client(void *p);
 
