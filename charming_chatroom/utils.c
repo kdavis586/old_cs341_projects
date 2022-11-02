@@ -12,6 +12,7 @@
 #include <signal.h>
 
 #include "utils.h"
+#include "user_hooks.h"
 static const size_t MESSAGE_SIZE_DIGITS = 4;
 
 char *create_message(char *name, char *message) {
@@ -50,12 +51,12 @@ ssize_t write_message_size(size_t size, int socket) {
 ssize_t read_all_from_socket(int socket, char *buffer, size_t count) {
     size_t total_read = 0;
     while (total_read < count) {
-        ssize_t cur_read = read(socket, buffer, count);
+        ssize_t cur_read = read(socket, buffer + total_read, count - total_read);
         if (cur_read == 0) {
             return total_read;
         } else if (cur_read > 0) {
             total_read += (size_t)cur_read;
-        } else if (cur_read == -1 && errno == SIGINT) {
+        } else if (cur_read == -1 && (errno == EINTR || errno == EAGAIN)) {
             continue;
         } else {
             return -1;
@@ -68,12 +69,12 @@ ssize_t read_all_from_socket(int socket, char *buffer, size_t count) {
 ssize_t write_all_to_socket(int socket, const char *buffer, size_t count) {
     size_t total_wrote = 0;
     while (total_wrote < count) {
-        ssize_t cur_read = write(socket, buffer, count);
+        ssize_t cur_read = write(socket, buffer + total_wrote, count - total_wrote);
         if (cur_read == 0) {
             return total_wrote;
         } else if (cur_read > 0) {
             total_wrote += (size_t)cur_read;
-        } else if (cur_read == -1 && errno == SIGINT) {
+        } else if (cur_read == -1 && (errno == EINTR || errno == EAGAIN)) {
             continue;
         } else {
             return -1;

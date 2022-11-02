@@ -8,7 +8,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#define READ_FAIL_NUM 10
+#define READ_FAIL_NUM 2
 
 static size_t read_counter;
 
