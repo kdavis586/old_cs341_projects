@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 /**
  * Virtual paths:
@@ -44,7 +45,8 @@ int minixfs_chmod(file_system *fs, char *path, int new_permissions) {
         // zero out previous permissions
         u_int16_t type = ino->mode >> RWX_BITS_NUMBER << RWX_BITS_NUMBER;
         // combine new permissions with current type
-        ino->mode = (type | new_permissions);
+        ino->mode = (type | new_permissions); // TODO: Does this actually work?
+        clock_gettime(CLOCK_REALTIME, ino->ctim);
     } else {
         // path is not a valid format or no file associated with path
         errno = ENOENT;
@@ -54,7 +56,21 @@ int minixfs_chmod(file_system *fs, char *path, int new_permissions) {
 
 int minixfs_chown(file_system *fs, char *path, uid_t owner, gid_t group) {
     // Land ahoy!
-    return -1;
+    inode * ino;
+    if (valid_filename(path) && (ino = get_inode(fs, path))) {
+        inode * ino = get_inode(fs, path);
+        if (owner != ((uid_t)-1)) {
+            ino->uid = owner;
+        }
+        if (group != ((gid_t)-1)) {
+            ino->gid = group;
+        }
+        clock_gettime(CLOCK_REALTIME, ino->ctim);
+    } else {
+        // path is not a valid format or no file associated with path
+        errno = ENOENT;
+        return -1;
+    }
 }
 
 inode *minixfs_create_inode_for_path(file_system *fs, const char *path) {
