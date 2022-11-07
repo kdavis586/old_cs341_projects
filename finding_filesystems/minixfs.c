@@ -38,7 +38,18 @@ int minixfs_virtual_path_count =
 
 int minixfs_chmod(file_system *fs, char *path, int new_permissions) {
     // Thar she blows!
-    return 0;
+    inode * ino;
+    if (valid_filename(path) && (ino = get_inode(fs, path))) {
+        inode * ino = get_inode(fs, path);
+        // zero out previous permissions
+        u_int16_t type = ino->mode >> RWX_BITS_NUMBER << RWX_BITS_NUMBER;
+        // combine new permissions with current type
+        ino->mode = (type | new_permissions);
+    } else {
+        // path is not a valid format or no file associated with path
+        errno = ENOENT;
+        return -1;
+    }
 }
 
 int minixfs_chown(file_system *fs, char *path, uid_t owner, gid_t group) {
@@ -48,6 +59,19 @@ int minixfs_chown(file_system *fs, char *path, uid_t owner, gid_t group) {
 
 inode *minixfs_create_inode_for_path(file_system *fs, const char *path) {
     // Land ahoy!
+    if (valid_filename(path) && !get_inode(fs, path)) {
+        // path is valid and there is no inode associated with the current path
+        inode_number unused_inode_num = first_unused_inode(fs);
+        data_block_number unused_data_block_num = first_unused_data(fs);
+        if (unused_inode_num == -1 || unused_data_block_num == -1) {
+            // Didn't have resources to give out
+            // TODO: finish this implementation
+            return NULL;
+        }
+
+
+    }
+
     return NULL;
 }
 
