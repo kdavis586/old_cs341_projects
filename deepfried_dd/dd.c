@@ -108,63 +108,40 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
-    if (INPUT != stdin && fseek(INPUT, skip_block_in * block_size, SEEK_SET) == -1) {
-        handle_exit();
-        exit(1);
-    }
-    if (OUTPUT != stdout && fseek(OUTPUT, skip_block_out * block_size, SEEK_SET) == -1) {
+    // skip_block_in only set when INPUT is not stdin (according to description of autograder)
+    if (skip_block_in && fseek(INPUT, skip_block_in * block_size, SEEK_SET) == -1) {
         handle_exit();
         exit(1);
     }
 
-    // getting the end position of the file
-    size_t cur_pos = (size_t)ftell(INPUT);
-    fseek(INPUT, 0, SEEK_END);
-    size_t end_pos = (size_t)ftell(INPUT);
-    fseek(INPUT, cur_pos, SEEK_SET);
-    
-    while (end_pos - cur_pos >= block_size && (total_block_cpy == -1 || (ssize_t)FULL_BLOCKS_IN < total_block_cpy)) {
-        char buf[block_size];
-        memset(&buf, 0, block_size);
-        if (fread(&buf, block_size, 1, INPUT) == 1) {
-            FULL_BLOCKS_IN += 1;
-            if (fwrite(&buf, block_size, 1, OUTPUT) != 1) {
-                exit(1);
-            }
-            FULL_BLOCKS_OUT += 1;
-            TOTAL_BYTES_COPIED += block_size;
-            cur_pos = (size_t)ftell(INPUT);
-        } else {
+    // skip_block_out only set when INPUT is not stdin (according to description of autograder)
+    if (skip_block_out && fseek(OUTPUT, skip_block_out * block_size, SEEK_SET) == -1) {
+        handle_exit();
+        exit(1);
+    }
+
+    char buf[block_size];
+    memset(&buf, 0, block_size);
+    while ((total_block_cpy == -1 || (ssize_t)FULL_BLOCKS_IN < total_block_cpy) && fread(&buf, block_size, 1, INPUT) == 1) {
+        FULL_BLOCKS_IN += 1;
+        if (fwrite(&buf, block_size, 1, OUTPUT) != 1) {
             exit(1);
         }
+        FULL_BLOCKS_OUT += 1;
+        TOTAL_BYTES_COPIED += block_size;
+        memset(&buf, 0, block_size);
     }
-    if (end_pos - cur_pos && end_pos - cur_pos < block_size) {
-        // could still be data to read
-        size_t size = end_pos - cur_pos;
-        char buf[size];
-        memset(&buf, 0, size);
-        if (fread(&buf, size, 1, INPUT) == 1) {
+    if (feof(INPUT)) {
+        if (strlen(buf)) {
             PARTIAL_BLOCKS_IN += 1;
             if (fwrite(&buf, strlen(buf), 1, OUTPUT) != 1) {
                 exit(1);
             }
 
             PARTIAL_BLOCKS_OUT += 1;
-            TOTAL_BYTES_COPIED += size;
-        }
-    }
-    // if (feof(INPUT)) {
-    //     if (strlen(buf)) {
-    //         PARTIAL_BLOCKS_IN += 1;
-    //         if (fwrite(&buf, strlen(buf), 1, OUTPUT) != 1) {
-    //             exit(1);
-    //         }
-
-    //         PARTIAL_BLOCKS_OUT += 1;
-    //         TOTAL_BYTES_COPIED += (strlen(buf));
-    //     } 
-    // } else
-    if (ferror(INPUT)) {
+            TOTAL_BYTES_COPIED += (strlen(buf));
+        } 
+    } else if (ferror(INPUT)) {
         exit(1);
     }
     
