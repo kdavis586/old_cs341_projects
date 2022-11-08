@@ -27,7 +27,7 @@ void handler(int signal) {
 
     time_t elapsed_sec = end.tv_sec - START.tv_sec;
     long elapsed_nsec = end.tv_nsec - START.tv_nsec;
-    double elapsed = (double)(((elapsed_sec * 1000000000) - elapsed_nsec) / 1000000000);
+    double elapsed = ((double)(elapsed_sec * 1000000000) + (double)elapsed_nsec) / (double)1000000000;
     print_status_report(FULL_BLOCKS_IN, PARTIAL_BLOCKS_IN,
         FULL_BLOCKS_OUT, PARTIAL_BLOCKS_OUT, TOTAL_BYTES_COPIED, elapsed);
 }
