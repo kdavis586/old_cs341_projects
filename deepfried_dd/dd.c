@@ -122,24 +122,25 @@ int main(int argc, char **argv) {
 
     char buf[block_size];
     memset(&buf, 0, block_size);
-    while ((total_block_cpy == -1 || (ssize_t)FULL_BLOCKS_IN < total_block_cpy) && fread(&buf, block_size, 1, INPUT) == 1) {
+    size_t num_read;
+    while ((total_block_cpy == -1 || (ssize_t)FULL_BLOCKS_IN < total_block_cpy) && (num_read = fread(&buf, 1, block_size, INPUT)) == block_size) {
         FULL_BLOCKS_IN += 1;
-        if (fwrite(&buf, block_size, 1, OUTPUT) != 1) {
+        if (fwrite(&buf, 1, num_read, OUTPUT) != num_read) {
             exit(1);
         }
         FULL_BLOCKS_OUT += 1;
-        TOTAL_BYTES_COPIED += block_size;
+        TOTAL_BYTES_COPIED += num_read;
         memset(&buf, 0, block_size);
     }
     if (feof(INPUT)) {
-        if (strlen(buf)) {
+        if (num_read) {
             PARTIAL_BLOCKS_IN += 1;
-            if (fwrite(&buf, strlen(buf), 1, OUTPUT) != 1) {
+            if (fwrite(&buf, 1, num_read, OUTPUT) != num_read) {
                 exit(1);
             }
 
             PARTIAL_BLOCKS_OUT += 1;
-            TOTAL_BYTES_COPIED += (strlen(buf));
+            TOTAL_BYTES_COPIED += num_read;
         } 
     } else if (ferror(INPUT)) {
         exit(1);
