@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <stdlib.h>
 
 /**
  * Virtual paths:
@@ -46,12 +47,14 @@ int minixfs_chmod(file_system *fs, char *path, int new_permissions) {
         u_int16_t type = ino->mode >> RWX_BITS_NUMBER << RWX_BITS_NUMBER;
         // combine new permissions with current type
         ino->mode = (type | new_permissions); // TODO: Does this actually work?
-        clock_gettime(CLOCK_REALTIME, ino->ctim);
+        clock_gettime(CLOCK_REALTIME, &(ino->ctim));
     } else {
         // path is not a valid format or no file associated with path
         errno = ENOENT;
         return -1;
     }
+
+    return -1;
 }
 
 int minixfs_chown(file_system *fs, char *path, uid_t owner, gid_t group) {
@@ -65,12 +68,14 @@ int minixfs_chown(file_system *fs, char *path, uid_t owner, gid_t group) {
         if (group != ((gid_t)-1)) {
             ino->gid = group;
         }
-        clock_gettime(CLOCK_REALTIME, ino->ctim);
+        clock_gettime(CLOCK_REALTIME, &(ino->ctim));
     } else {
         // path is not a valid format or no file associated with path
         errno = ENOENT;
         return -1;
     }
+
+    return -1;
 }
 
 inode *minixfs_create_inode_for_path(file_system *fs, const char *path) {
@@ -81,9 +86,12 @@ inode *minixfs_create_inode_for_path(file_system *fs, const char *path) {
         data_block_number unused_data_block_num = first_unused_data(fs);
         if (unused_inode_num == -1 || unused_data_block_num == -1) {
             // Didn't have resources to give out
-            // TODO: finish this implementation
             return NULL;
         }
+        inode * new_inode_ptr = calloc(1, sizeof(inode));
+        free(new_inode_ptr);
+        new_inode_ptr = NULL;
+
 
 
     }
