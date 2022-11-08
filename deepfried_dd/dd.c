@@ -117,7 +117,17 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
+    long cur_pos = ftell(INPUT);
+    fseek(INPUT, 0, SEEK_END);
+    long end_pos = ftell(INPUT);
+    fseek(INPUT, cur_pos, SEEK_SET);
+
+    long size = end_pos - cur_pos;
+    if (block_size > (size_t)size) {
+        block_size = (size_t)size;
+    }
     char buf[block_size];
+    memset(&buf, 0, block_size);
     while ((total_block_cpy == -1 || (ssize_t)FULL_BLOCKS_IN < total_block_cpy) && fread(&buf, block_size, 1, INPUT) == 1) {
         FULL_BLOCKS_IN += 1;
         if (fwrite(&buf, block_size, 1, OUTPUT) != 1) {
