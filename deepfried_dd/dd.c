@@ -117,39 +117,57 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
-    long cur_pos = ftell(INPUT);
+    // getting the end position of the file
+    size_t cur_pos = (size_t)ftell(INPUT);
     fseek(INPUT, 0, SEEK_END);
-    long end_pos = ftell(INPUT);
+    size_t end_pos = (size_t)ftell(INPUT);
     fseek(INPUT, cur_pos, SEEK_SET);
-
-    long size = end_pos - cur_pos;
-    if (block_size > (size_t)size) {
-        block_size = (size_t)size;
-    }
-    char buf[block_size];
-    memset(&buf, 0, block_size);
-    while ((total_block_cpy == -1 || (ssize_t)FULL_BLOCKS_IN < total_block_cpy) && fread(&buf, block_size, 1, INPUT) == 1) {
-        FULL_BLOCKS_IN += 1;
-        if (fwrite(&buf, block_size, 1, OUTPUT) != 1) {
+    
+    while (end_pos - cur_pos >= block_size && (total_block_cpy == -1 || (ssize_t)FULL_BLOCKS_IN < total_block_cpy)) {
+        char buf[block_size];
+        memset(&buf, 0, block_size);
+        if (fread(&buf, block_size, 1, INPUT) == 1) {
+            FULL_BLOCKS_IN += 1;
+            if (fwrite(&buf, block_size, 1, OUTPUT) != 1) {
+                exit(1);
+            }
+            FULL_BLOCKS_OUT += 1;
+            TOTAL_BYTES_COPIED += block_size;
+            cur_pos = (size_t)ftell(INPUT);
+        } else {
             exit(1);
         }
-        FULL_BLOCKS_OUT += 1;
-        TOTAL_BYTES_COPIED += block_size;
-        memset(&buf, 0, block_size);
     }
-    if (feof(INPUT)) {
-        if (strlen(buf)) {
+    if (end_pos - cur_pos && end_pos - cur_pos < block_size) {
+        // could still be data to read
+        size_t size = end_pos - cur_pos;
+        char buf[size];
+        memset(&buf, 0, size);
+        if (fread(&buf, size, 1, INPUT) == 1) {
             PARTIAL_BLOCKS_IN += 1;
             if (fwrite(&buf, strlen(buf), 1, OUTPUT) != 1) {
                 exit(1);
             }
 
             PARTIAL_BLOCKS_OUT += 1;
-            TOTAL_BYTES_COPIED += (strlen(buf));
-        } 
-    } else if (ferror(INPUT)) {
+            TOTAL_BYTES_COPIED += size;
+        }
+    }
+    // if (feof(INPUT)) {
+    //     if (strlen(buf)) {
+    //         PARTIAL_BLOCKS_IN += 1;
+    //         if (fwrite(&buf, strlen(buf), 1, OUTPUT) != 1) {
+    //             exit(1);
+    //         }
+
+    //         PARTIAL_BLOCKS_OUT += 1;
+    //         TOTAL_BYTES_COPIED += (strlen(buf));
+    //     } 
+    // } else
+    if (ferror(INPUT)) {
         exit(1);
     }
+    
 
     struct timespec end;
     clock_gettime(CLOCK_REALTIME, &end);
