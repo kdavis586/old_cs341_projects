@@ -14,6 +14,7 @@
 #include <netdb.h>
 #include <errno.h>
 #include "common.h"
+#include <sys/stat.h>
 
 char **parse_args(int argc, char **argv);
 verb check_args(char **args);
@@ -30,8 +31,8 @@ int main(int argc, char **argv) {
     char * host = parsed_args[0];
     char * port = parsed_args[1];
     char * str_method = parsed_args[2];
-    // char * remote_file = parsed_args[3];
-    // char * local_file = parsed_args[4];
+    char * remote_file = parsed_args[3];
+    char * local_file = parsed_args[4];
 
     // Create connection to the server
     struct addrinfo hints, * result;
@@ -70,6 +71,30 @@ int main(int argc, char **argv) {
             break;
         }
         case PUT: {
+            struct stat file_info;
+            if (stat(local_file, &file_info) != 0) {
+                fprintf(stderr, "here");
+                exit(1);
+            }
+            size_t file_size = (size_t)file_info.st_size;
+            char * write_buf = NULL;
+            asprintf(&write_buf, "%s %s\n", str_method, remote_file);
+            write_all(socket_fd, write_buf, strlen(write_buf));
+
+            free(write_buf);
+            write_all(socket_fd, (char *)&file_size, sizeof(size_t));
+
+            FILE * local_f_ptr = fopen(local_file, "r");
+            char * line_buf = NULL;
+            size_t len = 0;
+            ssize_t bytes_got;
+
+            while((bytes_got = getline(&line_buf, &len, local_f_ptr)) != -1) {
+                
+                write_all(socket_fd, line_buf, bytes_got);
+            }
+            
+            shutdown(socket_fd, SHUT_WR);
             break;
         }
         case LIST: {
@@ -85,17 +110,31 @@ int main(int argc, char **argv) {
             // prepare read buffer
             char read_buf[4096];
             memset(read_buf, 0, 4096);
+            // char * read_buf = calloc(1, 4096);
             
             // read from server
             read_all(socket_fd, read_buf, (size_t)4096);
 
-            // write results from server
-            // TODO: this is not correct, need to parse size
-            char * res = strtok(read_buf, "\n");
-            while (res) {
-                fprintf(stdout, "%s", res);
-                res = strtok(NULL, "\n");
+            char status[256];
+            memset(status, 0, 256);
+            size_t data_size = 0;
+
+            sscanf(read_buf, "%s\n", status);
+
+            memcpy((char *)&data_size, read_buf + strlen(status) + 1, sizeof(size_t));
+
+            size_t content_size = strlen(read_buf + strlen(status) + 1 + sizeof(size_t));
+            if (content_size < data_size) {
+                print_too_little_data();
+                // TODO: free resources
+                exit(1);
+            } else if (content_size > data_size) {
+                print_received_too_much_data();
+                // TODO: free resources
+                exit(1);
             }
+            // write results from server to stdout
+            fprintf(stdout, "%s\n%s", status, read_buf + strlen(status) + 1+ sizeof(size_t));
 
             break;
         }
@@ -209,7 +248,7 @@ void write_all(int fd, char * buffer, size_t size) {
     size_t bytes_wrote = 0;
     while (bytes_wrote != size) {
         ssize_t cur_written = write(fd, buffer + bytes_wrote, size - bytes_wrote);
-        if (bytes_wrote == 0) {
+        if (cur_written == 0) {
             return;
         } else if (cur_written > 0) {
             bytes_wrote += (size_t)cur_written;
@@ -220,6 +259,8 @@ void write_all(int fd, char * buffer, size_t size) {
             exit(1);
         }
     }
+
+    return;
 }
 
 void read_all(int fd, char * buffer, size_t size) {
@@ -236,4 +277,6 @@ void read_all(int fd, char * buffer, size_t size) {
             exit(1);
         }
     }
+
+    return;
 }
