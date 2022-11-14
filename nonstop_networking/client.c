@@ -15,6 +15,7 @@
 #include <errno.h>
 #include "common.h"
 #include <sys/stat.h>
+#include <fcntl.h>
 
 char **parse_args(int argc, char **argv);
 verb check_args(char **args);
@@ -68,6 +69,44 @@ int main(int argc, char **argv) {
 
     switch (method) {
         case GET: {
+            char * write_buf = NULL;
+            asprintf(&write_buf, "%s %s\n", str_method, remote_file);
+            write_all(socket_fd, write_buf, strlen(write_buf));
+
+            // prepare read buffer
+            char read_buf[4096];
+            memset(read_buf, 0, 4096);
+            // char * read_buf = calloc(1, 4096);
+            
+            // read from server
+            read_all(socket_fd, read_buf, (size_t)4096);
+
+            char status[256];
+            memset(status, 0, 256);
+            size_t data_size = 0;
+
+            sscanf(read_buf, "%s\n", status);
+
+            memcpy((char *)&data_size, read_buf + strlen(status) + 1, sizeof(size_t));
+
+            size_t content_size = strlen(read_buf + strlen(status) + 1 + sizeof(size_t));
+            if (content_size < data_size) {
+                print_too_little_data();
+                // TODO: free resources
+                exit(1);
+            } else if (content_size > data_size) {
+                print_received_too_much_data();
+                // TODO: free resources
+                exit(1);
+            }
+            // write results from server to stdout
+            int out_fd = open(local_file, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXU | S_IRWXG | S_IRWXO);
+            if (out_fd == -1) {
+                perror(NULL);
+                exit(1);
+            }
+            write_all(out_fd, read_buf + strlen(status) + 1 + sizeof(size_t), content_size);
+            fprintf(stdout, "%s\n%zu", status, data_size);
             break;
         }
         case PUT: {
