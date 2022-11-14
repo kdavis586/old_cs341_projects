@@ -178,6 +178,15 @@ int main(int argc, char **argv) {
             break;
         }
         case DELETE: {
+            // structure LIST request
+            char * write_buf = NULL;
+            asprintf(&write_buf, "%s %s\n", str_method, remote_file);
+            write_all(socket_fd, write_buf, strlen(write_buf));
+
+            // write request
+            write_all(socket_fd, write_buf, strlen(write_buf));
+            free(write_buf);
+            shutdown(socket_fd, SHUT_WR);
             break;
         }
         default: {
