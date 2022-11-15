@@ -19,8 +19,8 @@
 
 char **parse_args(int argc, char **argv);
 verb check_args(char **args);
-void write_all(int fd, char * buffer, size_t size);
-void read_all(int fd, char * buffer, size_t size);
+int write_all(int fd, char * buffer, size_t size);
+int read_all(int fd, char * buffer, size_t size);
 
 int main(int argc, char **argv) {
     // Good luck!
@@ -28,7 +28,7 @@ int main(int argc, char **argv) {
     // Parse and validate the arguments
     char ** parsed_args = parse_args(argc, argv);
     verb method = check_args(parsed_args);
-    // {host, port, method, remote, local, NULL}
+
     char * host = parsed_args[0];
     char * port = parsed_args[1];
     char * str_method = parsed_args[2];
@@ -44,21 +44,22 @@ int main(int argc, char **argv) {
     int getaddr_res = getaddrinfo(host, port, &hints, &result);
     if (getaddr_res != 0) {
         // normally print out error here
-        fprintf(stderr, "%s\n", gai_strerror(getaddr_res));// TODO remove
+        //fprintf(stderr, "%s\n", gai_strerror(getaddr_res));
         exit(1);
     }
 
     int socket_fd = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
     if (socket_fd == -1) {
-        //perror(NULL)
-        perror(NULL); // TODO: remove
+        // normally print out error here
+        //perror(NULL);
         free(parsed_args);
         exit(1);
     }
 
     int connect_result = connect(socket_fd, result->ai_addr, result->ai_addrlen);
     if (connect_result == -1) {
-        perror(NULL); // TODO: remove
+        // normally print out error here
+        //perror(NULL);
         shutdown(socket_fd, SHUT_RDWR);
         close(socket_fd);
         print_connection_closed();
@@ -69,43 +70,77 @@ int main(int argc, char **argv) {
 
     switch (method) {
         case GET: {
+            // Prepare request
             char * write_buf = NULL;
             asprintf(&write_buf, "%s %s\n", str_method, remote_file);
-            write_all(socket_fd, write_buf, strlen(write_buf));
 
-            // prepare read buffer
+            // Send request
+            if (write_all(socket_fd, write_buf, strlen(write_buf)) == -1) {
+                shutdown(socket_fd, SHUT_RDWR);
+                close(socket_fd);
+                print_connection_closed();
+                free(parsed_args);
+                exit(1);
+            }
+
+            // Prepare read buffer
             char read_buf[4096];
             memset(read_buf, 0, 4096);
-            // char * read_buf = calloc(1, 4096);
             
-            // read from server
-            read_all(socket_fd, read_buf, (size_t)4096);
+            // Read from server
+            if (read_all(socket_fd, read_buf, (size_t)4096) == -1) {
+                shutdown(socket_fd, SHUT_RDWR);
+                close(socket_fd);
+                print_connection_closed();
+                free(parsed_args);
+                exit(1);
+            }
 
+            // Get response status
             char status[256];
             memset(status, 0, 256);
-            size_t data_size = 0;
-
             sscanf(read_buf, "%s\n", status);
 
+            // Get response size
+            size_t data_size = 0;
             memcpy((char *)&data_size, read_buf + strlen(status) + 1, sizeof(size_t));
 
+            // Get true response size
             size_t content_size = strlen(read_buf + strlen(status) + 1 + sizeof(size_t));
             if (content_size < data_size) {
                 print_too_little_data();
-                // TODO: free resources
+                shutdown(socket_fd, SHUT_RDWR);
+                close(socket_fd);
+                free(parsed_args);
                 exit(1);
             } else if (content_size > data_size) {
                 print_received_too_much_data();
-                // TODO: free resources
+                shutdown(socket_fd, SHUT_RDWR);
+                close(socket_fd);
+                free(parsed_args);
                 exit(1);
             }
-            // write results from server to stdout
+
+            // Write results from server local file name
             int out_fd = open(local_file, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXU | S_IRWXG | S_IRWXO);
             if (out_fd == -1) {
-                perror(NULL);
+                // normally print error here
+                //perror(NULL);
+                shutdown(socket_fd, SHUT_RDWR);
+                close(socket_fd);
+                free(parsed_args);
                 exit(1);
             }
-            write_all(out_fd, read_buf + strlen(status) + 1 + sizeof(size_t), content_size);
+            
+            if (write_all(out_fd, read_buf + strlen(status) + 1 + sizeof(size_t), content_size) == -1) {
+                shutdown(socket_fd, SHUT_RDWR);
+                close(socket_fd);
+                print_connection_closed();
+                free(parsed_args);
+                exit(1);
+            }
+
+            // Write response status and size to stdout
             fprintf(stdout, "%s\n%zu", status, data_size);
             break;
         }
@@ -291,40 +326,41 @@ verb check_args(char **args) {
     exit(1);
 }
 
-// write all the bytes to the description, exit on failure
-void write_all(int fd, char * buffer, size_t size) {
+// Write all bytes to the file descriptor, 0 success, -1 fail
+int write_all(int fd, char * buffer, size_t size) {
     size_t bytes_wrote = 0;
     while (bytes_wrote != size) {
         ssize_t cur_written = write(fd, buffer + bytes_wrote, size - bytes_wrote);
         if (cur_written == 0) {
-            return;
+            return 0;
         } else if (cur_written > 0) {
             bytes_wrote += (size_t)cur_written;
         } else if (cur_written == -1 && (errno == EINTR || errno == EAGAIN)) {
             continue;
         } else {
             // error while writing
-            exit(1);
+            return -1;
         }
     }
 
-    return;
+    return 0;
 }
 
+// Read all bytes from the file descriptor, 0 success, -1 fail
 void read_all(int fd, char * buffer, size_t size) {
     size_t bytes_read = 0;
     while (bytes_read < size) {
         ssize_t cur_read = read(fd, buffer + bytes_read, size - bytes_read);
         if (cur_read == 0) {
-            return;
+            return 0;
         } else if (cur_read > 0) {
             bytes_read += (size_t)cur_read;
         } else if (cur_read == -1 && (errno == EINTR || errno == EAGAIN)) {
             continue;
         } else {
-            exit(1);
+            return -1;
         }
     }
 
-    return;
+    return 0;
 }
