@@ -21,6 +21,7 @@ char **parse_args(int argc, char **argv);
 verb check_args(char **args);
 int write_all(int fd, char * buffer, size_t size);
 int read_all(int fd, char * buffer, size_t size);
+int status_err(char * status);
 
 int main(int argc, char **argv) {
     // Good luck!
@@ -82,6 +83,7 @@ int main(int argc, char **argv) {
                 free(parsed_args);
                 exit(1);
             }
+            shutdown(socket_fd, SHUT_WR);
 
             // Prepare read buffer
             char read_buf[4096];
@@ -100,6 +102,11 @@ int main(int argc, char **argv) {
             char status[256];
             memset(status, 0, 256);
             sscanf(read_buf, "%s\n", status);
+
+            if (status_err(status)) {
+                fprintf(stdout, "%s", read_buf);
+                break;
+            }
 
             // Get response size
             size_t data_size = 0;
@@ -162,11 +169,23 @@ int main(int argc, char **argv) {
             //    Send the request verb and remote file name
             char * write_buf = NULL;
             asprintf(&write_buf, "%s %s\n", str_method, remote_file);
-            write_all(socket_fd, write_buf, strlen(write_buf));
+            if (write_all(socket_fd, write_buf, strlen(write_buf)) == -1) {
+                shutdown(socket_fd, SHUT_RDWR);
+                close(socket_fd);
+                print_connection_closed();
+                free(parsed_args);
+                exit(1);
+            }
             free(write_buf);
 
             //    Send the local file size
-            write_all(socket_fd, (char *)&file_size, sizeof(size_t));
+            if (write_all(socket_fd, (char *)&file_size, sizeof(size_t)) == -1) {
+                shutdown(socket_fd, SHUT_RDWR);
+                close(socket_fd);
+                print_connection_closed();
+                free(parsed_args);
+                exit(1);
+            }
 
             //    Send the local file contents
             FILE * local_f_ptr = fopen(local_file, "r");
@@ -182,26 +201,56 @@ int main(int argc, char **argv) {
                     exit(1);
                 }
             }
-            
             shutdown(socket_fd, SHUT_WR);
+
+            // Prepare read buffer
+            char read_buf[4096];
+            memset(read_buf, 0, 4096);
+            
+            // Read from server
+            if (read_all(socket_fd, read_buf, (size_t)4096) == -1) {
+                shutdown(socket_fd, SHUT_RDWR);
+                close(socket_fd);
+                print_connection_closed();
+                free(parsed_args);
+                exit(1);
+            }
+
+            // // Get response status
+            // char status[256];
+            // memset(status, 0, 256);
+            // sscanf(read_buf, "%s\n", status);
+
+            // if (status_err(status)) {
+            //     fprintf(stdout, "%s", read_buf);
+            //     break;
+            // }
+
+            // Put response will only respond with with either OK\n or ERROR\n<Error info>\n ... just print it
+            fprintf(stdout, "%s", read_buf);
             break;
         }
         case LIST: {
-            // structure LIST request
+            // Create LIST request
             char * write_buf = NULL;
             asprintf(&write_buf, "%s\n", str_method);
 
-            // write request
-            write_all(socket_fd, write_buf, strlen(write_buf));
+            // Send request
+            if (write_all(socket_fd, write_buf, strlen(write_buf)) == -1) {
+                shutdown(socket_fd, SHUT_RDWR);
+                close(socket_fd);
+                print_connection_closed();
+                free(parsed_args);
+                exit(1);
+            }
             free(write_buf);
             shutdown(socket_fd, SHUT_WR);
 
-            // prepare read buffer
+            // Prepare read buffer
             char read_buf[4096];
             memset(read_buf, 0, 4096);
-            // char * read_buf = calloc(1, 4096);
             
-            // read from server
+            // Read from server
             read_all(socket_fd, read_buf, (size_t)4096);
 
             char status[256];
@@ -375,6 +424,14 @@ void read_all(int fd, char * buffer, size_t size) {
         } else {
             return -1;
         }
+    }
+
+    return 0;
+}
+
+int status_err(char * status) {
+    if (strcmp(status, "ERROR") == 0) {
+        return 1;
     }
 
     return 0;
