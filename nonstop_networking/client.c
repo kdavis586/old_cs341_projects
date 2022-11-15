@@ -251,41 +251,84 @@ int main(int argc, char **argv) {
             memset(read_buf, 0, 4096);
             
             // Read from server
-            read_all(socket_fd, read_buf, (size_t)4096);
+            if (read_all(socket_fd, read_buf, (size_t)4096) == -1) {
+                shutdown(socket_fd, SHUT_RDWR);
+                close(socket_fd);
+                print_connection_closed();
+                free(parsed_args);
+                exit(1);
+            }
 
+            // Get response status
             char status[256];
             memset(status, 0, 256);
-            size_t data_size = 0;
-
             sscanf(read_buf, "%s\n", status);
 
+            if (status_err(status)) {
+                fprintf(stdout, "%s", read_buf);
+                break;
+            }
+
+            // Get response size
+            size_t data_size = 0;
             memcpy((char *)&data_size, read_buf + strlen(status) + 1, sizeof(size_t));
 
+            // Get true response size
             size_t content_size = strlen(read_buf + strlen(status) + 1 + sizeof(size_t));
             if (content_size < data_size) {
                 print_too_little_data();
-                // TODO: free resources
+                shutdown(socket_fd, SHUT_RDWR);
+                close(socket_fd);
+                free(parsed_args);
                 exit(1);
             } else if (content_size > data_size) {
                 print_received_too_much_data();
-                // TODO: free resources
+                shutdown(socket_fd, SHUT_RDWR);
+                close(socket_fd);
+                free(parsed_args);
                 exit(1);
             }
-            // write results from server to stdout
-            fprintf(stdout, "%s\n%s", status, read_buf + strlen(status) + 1+ sizeof(size_t));
 
+            // Write results from server to stdout
+            fprintf(stdout, "%s\n%s", status, read_buf + strlen(status) + 1 + sizeof(size_t));
             break;
         }
         case DELETE: {
-            // structure LIST request
+            // Create DELETE request
             char * write_buf = NULL;
             asprintf(&write_buf, "%s %s\n", str_method, remote_file);
-            write_all(socket_fd, write_buf, strlen(write_buf));
 
-            // write request
-            write_all(socket_fd, write_buf, strlen(write_buf));
+            // Send request
+            if (write_all(socket_fd, write_buf, strlen(write_buf)) == -1) {
+                shutdown(socket_fd, SHUT_RDWR);
+                close(socket_fd);
+                print_connection_closed();
+                free(parsed_args);
+                exit(1);
+            }
             free(write_buf);
             shutdown(socket_fd, SHUT_WR);
+
+            // Prepare read buffer
+            char read_buf[4096];
+            memset(read_buf, 0, 4096);
+            
+            // Read from server
+            if (read_all(socket_fd, read_buf, (size_t)4096) == -1) {
+                shutdown(socket_fd, SHUT_RDWR);
+                close(socket_fd);
+                print_connection_closed();
+                free(parsed_args);
+                exit(1);
+            }
+
+            // Get response status
+            char status[256];
+            memset(status, 0, 256);
+            sscanf(read_buf, "%s\n", status);
+
+            // Delete response will only respond with with either OK\n or ERROR\n<Error info>\n ... just print it
+            fprintf(stdout, "%s", read_buf);
             break;
         }
         default: {
