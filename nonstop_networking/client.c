@@ -145,27 +145,42 @@ int main(int argc, char **argv) {
             break;
         }
         case PUT: {
+            // Check to make sure that local file to upload exists
             struct stat file_info;
             if (stat(local_file, &file_info) != 0) {
-                fprintf(stderr, "here");
+                // normally print error here
+                shutdown(socket_fd, SHUT_RDWR);
+                close(socket_fd);
+                free(parsed_args);
                 exit(1);
             }
+
+            // Get the size of the file for header information
             size_t file_size = (size_t)file_info.st_size;
+
+            // Create and send the request information
+            //    Send the request verb and remote file name
             char * write_buf = NULL;
             asprintf(&write_buf, "%s %s\n", str_method, remote_file);
             write_all(socket_fd, write_buf, strlen(write_buf));
-
             free(write_buf);
+
+            //    Send the local file size
             write_all(socket_fd, (char *)&file_size, sizeof(size_t));
 
+            //    Send the local file contents
             FILE * local_f_ptr = fopen(local_file, "r");
             char * line_buf = NULL;
             size_t len = 0;
             ssize_t bytes_got;
-
             while((bytes_got = getline(&line_buf, &len, local_f_ptr)) != -1) {
-                
-                write_all(socket_fd, line_buf, bytes_got);
+                if (write_all(socket_fd, line_buf, bytes_got) == -1) {
+                    shutdown(socket_fd, SHUT_RDWR);
+                    close(socket_fd);
+                    print_connection_closed();
+                    free(parsed_args);
+                    exit(1);
+                }
             }
             
             shutdown(socket_fd, SHUT_WR);
