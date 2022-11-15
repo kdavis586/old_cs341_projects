@@ -454,7 +454,7 @@ int write_all(int fd, char * buffer, size_t size) {
 }
 
 // Read all bytes from the file descriptor, 0 success, -1 fail
-void read_all(int fd, char * buffer, size_t size) {
+int read_all(int fd, char * buffer, size_t size) {
     size_t bytes_read = 0;
     while (bytes_read < size) {
         ssize_t cur_read = read(fd, buffer + bytes_read, size - bytes_read);
