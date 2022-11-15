@@ -46,6 +46,7 @@ int main(int argc, char **argv) {
     if (getaddr_res != 0) {
         // normally print out error here
         //fprintf(stderr, "%s\n", gai_strerror(getaddr_res));
+        freeaddrinfo(result);
         exit(1);
     }
 
@@ -54,6 +55,7 @@ int main(int argc, char **argv) {
         // normally print out error here
         //perror(NULL);
         free(parsed_args);
+        freeaddrinfo(result);
         exit(1);
     }
 
@@ -65,6 +67,7 @@ int main(int argc, char **argv) {
         close(socket_fd);
         print_connection_closed();
         free(parsed_args);
+        freeaddrinfo(result);
         exit(1);
     }
 
@@ -81,6 +84,7 @@ int main(int argc, char **argv) {
                 close(socket_fd);
                 print_connection_closed();
                 free(parsed_args);
+                freeaddrinfo(result);
                 exit(1);
             }
             shutdown(socket_fd, SHUT_WR);
@@ -95,6 +99,7 @@ int main(int argc, char **argv) {
                 close(socket_fd);
                 print_connection_closed();
                 free(parsed_args);
+                freeaddrinfo(result);
                 exit(1);
             }
 
@@ -119,12 +124,14 @@ int main(int argc, char **argv) {
                 shutdown(socket_fd, SHUT_RDWR);
                 close(socket_fd);
                 free(parsed_args);
+                freeaddrinfo(result);
                 exit(1);
             } else if (content_size > data_size) {
                 print_received_too_much_data();
                 shutdown(socket_fd, SHUT_RDWR);
                 close(socket_fd);
                 free(parsed_args);
+                freeaddrinfo(result);
                 exit(1);
             }
 
@@ -136,6 +143,7 @@ int main(int argc, char **argv) {
                 shutdown(socket_fd, SHUT_RDWR);
                 close(socket_fd);
                 free(parsed_args);
+                freeaddrinfo(result);
                 exit(1);
             }
             
@@ -144,6 +152,7 @@ int main(int argc, char **argv) {
                 close(socket_fd);
                 print_connection_closed();
                 free(parsed_args);
+                freeaddrinfo(result);
                 exit(1);
             }
 
@@ -159,6 +168,7 @@ int main(int argc, char **argv) {
                 shutdown(socket_fd, SHUT_RDWR);
                 close(socket_fd);
                 free(parsed_args);
+                freeaddrinfo(result);
                 exit(1);
             }
 
@@ -174,6 +184,7 @@ int main(int argc, char **argv) {
                 close(socket_fd);
                 print_connection_closed();
                 free(parsed_args);
+                freeaddrinfo(result);
                 exit(1);
             }
             free(write_buf);
@@ -184,6 +195,7 @@ int main(int argc, char **argv) {
                 close(socket_fd);
                 print_connection_closed();
                 free(parsed_args);
+                freeaddrinfo(result);
                 exit(1);
             }
 
@@ -198,6 +210,7 @@ int main(int argc, char **argv) {
                     close(socket_fd);
                     print_connection_closed();
                     free(parsed_args);
+                    freeaddrinfo(result);
                     exit(1);
                 }
             }
@@ -213,6 +226,7 @@ int main(int argc, char **argv) {
                 close(socket_fd);
                 print_connection_closed();
                 free(parsed_args);
+                freeaddrinfo(result);
                 exit(1);
             }
 
@@ -241,6 +255,7 @@ int main(int argc, char **argv) {
                 close(socket_fd);
                 print_connection_closed();
                 free(parsed_args);
+                freeaddrinfo(result);
                 exit(1);
             }
             free(write_buf);
@@ -256,6 +271,7 @@ int main(int argc, char **argv) {
                 close(socket_fd);
                 print_connection_closed();
                 free(parsed_args);
+                freeaddrinfo(result);
                 exit(1);
             }
 
@@ -280,12 +296,14 @@ int main(int argc, char **argv) {
                 shutdown(socket_fd, SHUT_RDWR);
                 close(socket_fd);
                 free(parsed_args);
+                freeaddrinfo(result);
                 exit(1);
             } else if (content_size > data_size) {
                 print_received_too_much_data();
                 shutdown(socket_fd, SHUT_RDWR);
                 close(socket_fd);
                 free(parsed_args);
+                freeaddrinfo(result);
                 exit(1);
             }
 
@@ -304,6 +322,7 @@ int main(int argc, char **argv) {
                 close(socket_fd);
                 print_connection_closed();
                 free(parsed_args);
+                freeaddrinfo(result);
                 exit(1);
             }
             free(write_buf);
@@ -319,6 +338,7 @@ int main(int argc, char **argv) {
                 close(socket_fd);
                 print_connection_closed();
                 free(parsed_args);
+                freeaddrinfo(result);
                 exit(1);
             }
 
@@ -335,6 +355,7 @@ int main(int argc, char **argv) {
             shutdown(socket_fd, SHUT_RDWR);
             close(socket_fd);
             free(parsed_args);
+            freeaddrinfo(result);
             exit(1);
         }
     }
@@ -342,6 +363,7 @@ int main(int argc, char **argv) {
     shutdown(socket_fd, SHUT_RDWR);
     close(socket_fd);
     free(parsed_args);
+    freeaddrinfo(result);
     exit(0);
 }
 
