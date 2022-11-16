@@ -80,16 +80,19 @@ int main(int argc, char **argv) {
 
         BinaryTreeNode * cur_node = malloc((size_t)total_read_bytes);
         if (!fread(cur_node, (size_t)total_read_bytes, (size_t)1, data_file)) {
-          fclose(data_file); 
+          fclose(data_file);
+          free(cur_node); 
           return 1;
         }
         int compare_res = strcmp(target_word, cur_node->word);
         if (compare_res == 0) {
           printFound(target_word, cur_node->count, cur_node->price);
+          free(cur_node);
           break;
         } else if (compare_res > 0) {
           if (!cur_node->right_child) {
             printNotFound(target_word);
+            free(cur_node);
             break;
           } else if (fseek(data_file, (long)cur_node->right_child, SEEK_SET) == -1) {
             fclose(data_file);
@@ -99,6 +102,7 @@ int main(int argc, char **argv) {
         } else {
           if (!cur_node->left_child) {
             printNotFound(target_word);
+            free(cur_node);
             break;
           } else if (fseek(data_file, (long)cur_node->left_child, SEEK_SET) == -1) {
             fclose(data_file);
@@ -106,7 +110,7 @@ int main(int argc, char **argv) {
             return 1;
           }
         }
-
+       
        free(cur_node);
        cur_offset = ftell(data_file);
       }
