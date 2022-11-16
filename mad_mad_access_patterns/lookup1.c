@@ -26,8 +26,10 @@ int main(int argc, char **argv) {
     if (!data_file) {
       // fopen failed
       openFail(file_name);
-      fclose(data_file);
-      return 1;
+      if (data_file) {
+        fclose(data_file);
+      }
+      return 2;
     }
 
     // Validate the file starts with "BTRE"
@@ -40,7 +42,7 @@ int main(int argc, char **argv) {
     if (strcmp(start_bytes, BINTREE_HEADER_STRING)) {
       formatFail(file_name);
       fclose(data_file);
-      return 1;
+      return 2;
     }
 
     // Search for the word information of all the requested words in argv

@@ -30,12 +30,17 @@ int main(int argc, char **argv) {
       // fopen failed
       openFail(file_name);
       close(data_fd);
-      return 1;
+      return 2;
     }
     struct stat file_info;
     fstat(data_fd, &file_info);
 
     char * addr = mmap(NULL, (size_t)file_info.st_size, PROT_READ, MAP_PRIVATE, data_fd, 0);
+    if ((void *)addr == MAP_FAILED) {
+      mmapFail(file_name);
+      return 3;
+    }
+    // TODO: handle mmap failing
 
     char start_tag[BINTREE_ROOT_NODE_OFFSET + 1];
     memset(start_tag, 0, BINTREE_ROOT_NODE_OFFSET + 1);
@@ -44,7 +49,7 @@ int main(int argc, char **argv) {
     if (strcmp(start_tag, BINTREE_HEADER_STRING)) {
       formatFail(file_name);
       close(data_fd);
-      return 1;
+      return 2;
     }
 
     // Search for the word information of all the requested words in argv
