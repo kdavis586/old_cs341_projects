@@ -38,7 +38,6 @@ int main(int argc, char **argv) {
       return 1;
     }
     if (strcmp(start_bytes, BINTREE_HEADER_STRING)) {
-      fprintf(stderr, "%s\n", start_bytes);
       formatFail(file_name);
       fclose(data_file);
       return 1;
