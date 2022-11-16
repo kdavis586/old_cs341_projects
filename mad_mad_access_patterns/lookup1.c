@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
     // Validate the file starts with "BTRE"
     char start_bytes[BINTREE_ROOT_NODE_OFFSET + 1];
     memset(start_bytes, 0, BINTREE_ROOT_NODE_OFFSET + 1);
-    if (!fread(&start_bytes, BINTREE_ROOT_NODE_OFFSET, 1, data_file)) {
+    if (!fread(start_bytes, BINTREE_ROOT_NODE_OFFSET, 1, data_file)) {
       fclose(data_file);
       return 1;
     }
@@ -46,63 +46,72 @@ int main(int argc, char **argv) {
     }
 
     // Search for the word information of all the requested words in argv
-    size_t target_word_idx = 2;
-    for (; target_word_idx < (size_t)argc; target_word_idx++) {
+    int target_word_idx = 2;
+    while (target_word_idx < argc) {
       // Seek to offset of 4 bytes to start at file data
-      if (fseek(data_file, BINTREE_ROOT_NODE_OFFSET, SEEK_SET) == -1) {
+      if (fseek(data_file, (long)BINTREE_ROOT_NODE_OFFSET, SEEK_SET) == -1) {
         fclose(data_file);
         return 1;
       }
+
       char * target_word = argv[target_word_idx];
+      long cur_offset = ftell(data_file);
 
       while (1) {
+        //fprintf(stdout, "target_word_idx check : %d\n", target_word_idx);
         // Populate node with base data
-        long cur_offset = ftell(data_file);
-        // fprintf(stderr, "%ld\n", cur_offset);
-        BinaryTreeNode cur_node;
-        memset(&cur_node, 0, sizeof(BinaryTreeNode));
-        if (!fread(&cur_node, sizeof(BinaryTreeNode), 1, data_file)) {
+        if (fseek(data_file, (long)sizeof(BinaryTreeNode), SEEK_CUR) == -1) {
           fclose(data_file);
           return 1;
         }
         
         // Get to end of word string
-        while ((unsigned char)fgetc(data_file) != 0) {}
+        while ((char)fgetc(data_file) != '\0') {
+          continue;
+        }
         long end_word_offset = ftell(data_file);
-        size_t total_read_bytes = (size_t)(end_word_offset - cur_offset);
+        long total_read_bytes = end_word_offset - cur_offset;
 
         // Re-seek to current offset and re-read
         if (fseek(data_file, cur_offset, SEEK_SET) == -1) {
           fclose(data_file);
           return 1;
         }
-        if (!fread(&cur_node, total_read_bytes, 1, data_file)) {
+
+        BinaryTreeNode * cur_node = malloc((size_t)total_read_bytes);
+        if (!fread(cur_node, (size_t)total_read_bytes, (size_t)1, data_file)) {
           fclose(data_file); 
           return 1;
         }
-
-        int compare_res = strcmp(target_word, cur_node.word);
+        int compare_res = strcmp(target_word, cur_node->word);
         if (compare_res == 0) {
-          printFound(target_word, cur_node.count, cur_node.price);
+          printFound(target_word, cur_node->count, cur_node->price);
           break;
         } else if (compare_res > 0) {
-          if (!cur_node.right_child) {
+          if (!cur_node->right_child) {
             printNotFound(target_word);
             break;
-          } else if (fseek(data_file, cur_node.right_child, SEEK_SET) == -1) {
+          } else if (fseek(data_file, (long)cur_node->right_child, SEEK_SET) == -1) {
             fclose(data_file);
+            free(cur_node);
             return 1;
           }
         } else {
-          if (!cur_node.left_child) {
+          if (!cur_node->left_child) {
             printNotFound(target_word);
             break;
-          } else if (fseek(data_file, cur_node.left_child, SEEK_SET) == -1) {
+          } else if (fseek(data_file, (long)cur_node->left_child, SEEK_SET) == -1) {
             fclose(data_file);
+            free(cur_node);
             return 1;
           }
         }
+
+       free(cur_node);
+       cur_offset = ftell(data_file);
       }
+
+      target_word_idx++;
     }
 
     fclose(data_file);

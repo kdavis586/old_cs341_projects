@@ -4,3 +4,54 @@ list,30
 for,340
 this,3
 program,59
+a,1
+ab,12
+abc,123
+abcd,1234
+abcde,12345
+abcdef,123456
+abcdefg,1234567
+abcdefgh,12345678
+abcdefghi,123456789
+abcdefghij,1234567890
+abcdefghijk,12345678909
+abcdefghijkl,123456789098
+abcdefghijklm,1234567890987
+abcdefghijklmn,12345678909876
+abcdefghijklmno,123456789098765
+abcdefghijklmnop,1234567890987654
+abcdefghijklmnopq,12345678909876543
+abcdefghijklmnopqr,123456789098765433
+abcdefghijklmnopqrs,1234567890987654332
+abcdefghijklmnopqrst,123456789098765433213
+abcdefghijklmnopqrstu,1234567890987654332132
+abcdefghijklmnopqrstuv,12345678909876543321322
+abcdefghijklmnopqrstuvw,123456789098765433213221
+abcdefghijklmnopqrstuvwx,1234567890987654332132216
+abcdefghijklmnopqrstuvwxy,12345678909876543321322165
+abcdefghijklmnopqrstuvwxyz,123456789098765433231221654
+ba, 12
+cba, 123
+dcba, 1234
+edcba, 12345
+fedcba, 123456
+gfedcba, 1234567
+hgfedcba, 12345678
+ihgfedcba, 123456789
+jihgfedcba, 1234567890
+kjihgfedcba, 12345678909
+lkjihgfedcba, 123456789098
+mlkjihgfedcba, 1234567890987
+nmlkjihgfedcba, 12345678909876
+onmlkjihgfedcba, 123456789098765
+ponmlkjihgfedcba, 1234567890987654
+qponmlkjihgfedcba, 12345678909876543
+rqponmlkjihgfedcba, 123456789098765433
+srqponmlkjihgfedcba, 1234567890987654332
+tsrqponmlkjihgfedcba, 123456789098765433213
+utsrqponmlkjihgfedcba, 1234567890987654332132
+vutsrqponmlkjihgfedcba, 12345678909876543321322
+wvutsrqponmlkjihgfedcba, 123456789098765433213221
+xwvutsrqponmlkjihgfedcba, 1234567890987654332132216
+yxwvutsrqponmlkjihgfedcba, 12345678909876543321322165
+zyxwvutsrqponmlkjihgfedcba, 123456789098765433231221654
