@@ -129,7 +129,7 @@ char * camel_case_sentence(const char * sentence) {
     size_t bad_chars = get_bad_char_count(itr);
 
     char * camel_cased = (char *) malloc(strlen(sentence) - bad_chars + 1);
-    camel_cased[strlen(sentence)] = '\0';
+    camel_cased[strlen(sentence) - bad_chars] = '\0';
 
     size_t idx = 0;
     int first_letter = 1;
