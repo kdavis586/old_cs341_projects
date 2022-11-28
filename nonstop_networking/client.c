@@ -464,7 +464,7 @@ int write_all(int fd, char * buffer, size_t size) {
             return 0;
         } else if (cur_written > 0) {
             bytes_wrote += (size_t)cur_written;
-        } else if (cur_written == -1 && (errno == EINTR || errno == EAGAIN)) {
+        } else if (cur_written == -1 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)) {
             continue;
         } else {
             // error while writing
