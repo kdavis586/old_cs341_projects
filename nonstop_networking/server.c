@@ -24,6 +24,10 @@
 void shutdown_server();
 void handle_sigint();
 void delete_server_dir();
+void handle_list(int fd);
+void handle_get(int fd);
+void handle_put(int fd);
+void handle_delete(int fd, char * read_buf);
 
 // Globals
 static int SERVER_SOCKET = -1;
@@ -34,6 +38,7 @@ static char * SERVER_DIR = NULL;
 
 // Main function
 // TODO: Check to make sure returning proper exit code for each scenario
+// TODO: Implement this: http://cs341.cs.illinois.edu/assignments/networking_mp#:~:text=Another%20thing%20to,any%20associated%20state.
 int main(int argc, char **argv) {
     // Check for valid number of arguments
     if (argc != 2) {
@@ -118,6 +123,7 @@ int main(int argc, char **argv) {
     if (!(SERVER_DIR = mkdtemp(SERVER_DIR))) {
         exit(1);
     }
+    print_temp_directory(SERVER_DIR);
     
     int max_events = 500; // HACK: Random value, might not work...
     struct epoll_event events[max_events];
@@ -139,7 +145,6 @@ int main(int argc, char **argv) {
             if (fd == SERVER_SOCKET) {
                 // Event was from the server socket, accept new connection
                 int connect_fd = accept(SERVER_SOCKET, NULL, NULL);
-                fprintf(stderr, "Accepted new connection with fd: %d\n", connect_fd);
                 if (connect_fd == -1) {
                     exit(1);
                 }
@@ -153,75 +158,37 @@ int main(int argc, char **argv) {
                     shutdown_server();
                     exit(1);
                 }
-
             } else {
-                // TODO: Figure out how to detect client disconnect
-
-                // Event was from a client
-                fprintf(stderr, "Event from client_fd: %d\n", fd);
+                // Event from client, create read_buffer
                 char read_buf[1024];
                 memset(read_buf, 0, 1024);
+
                 if (read_all(fd, read_buf, 1024) == -1) {
-                    fprintf(stderr, "Read failed!\n");
+                    exit(1);
                 }
-                fprintf(stderr, "Content: %s\n", read_buf);
-                shutdown(fd, SHUT_RD); // Only close early in LIST
 
                 // Check to see what command was given
                 if (strncmp(read_buf, "LIST", 4) == 0) {
-                    fprintf(stderr, "LIST request detected\n");
-                    // Handle LIST request
-                    char send_buf[1024];
-                    memset(send_buf, 0, 1024);
-                    memcpy(send_buf, "OK\n", 3);
-
-                    size_t send_size = 0;
-                    size_t bytes_copied = 3 + sizeof(size_t);
-                    fprintf(stderr, "Copying file names...\n");
-
-                    fprintf(stderr, "Reading file names from directory: %s\n", SERVER_DIR);
-                    DIR * d = opendir(SERVER_DIR);
-                    struct dirent * dir;
-                    if (d) {
-                        while ((dir = readdir(d))) {
-                            fprintf(stderr, "Found file: %s\n", dir->d_name);
-                            if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0) {
-                                continue; // Skip self and parent names
-                            }
-                            
-                            send_size += strlen(dir->d_name);
-                            memcpy(send_buf + bytes_copied, dir->d_name, strlen(dir->d_name));
-                            bytes_copied += strlen(dir->d_name);
-                            send_buf[bytes_copied] = '\n';
-                            send_size++;
-                            bytes_copied++;
-                        }
-                        if (send_size > 0) {
-                            send_buf[bytes_copied - 1] = '\0'; // Get rid of trailing newline
-                            bytes_copied--;
-                            send_size--;
-                        }
-
-                        closedir(d);
-                    }
-                    fprintf(stderr, "send size: %zu\n", send_size);
-                    memcpy(send_buf + 3, (void *)&send_size, sizeof(size_t));
-                    write(2, send_buf, 3);
-                    write(2, send_buf + 3 + sizeof(size_t), 255);
-
-                    write_all(fd, send_buf, bytes_copied);
-                    fprintf(stderr, "Completed LIST request\n");
+                    handle_list(fd);
                     epoll_ctl(EPOLL_FD, EPOLL_CTL_DEL, fd, NULL);
                     close(fd);
                 } else if (strncmp(read_buf, "GET", 3) == 0) {
                     // Handle GET request
+                    epoll_ctl(EPOLL_FD, EPOLL_CTL_DEL, fd, NULL);
+                    close(fd);
                 } else if (strncmp(read_buf, "PUT", 3) == 0) {
                     // Handle PUT request
+                    epoll_ctl(EPOLL_FD, EPOLL_CTL_DEL, fd, NULL);
+                    close(fd);
                 } else if (strncmp(read_buf, "DELETE", 6) == 0) {
                     // Handle DELETE request
+                    handle_delete(fd, read_buf);
+                    epoll_ctl(EPOLL_FD, EPOLL_CTL_DEL, fd, NULL);
+                    close(fd);
                 } else {
                     // Handle Invalid
-                    // Shouldn't go here
+                    // Send bad response to client
+                    // See: http://cs341.cs.illinois.edu/assignments/networking_mp#:~:text=filenames%20at%20all.-,Error%20handling,-Your%20server%20is
                     exit(7);
                 }
             }
@@ -234,6 +201,95 @@ int main(int argc, char **argv) {
 }
 
 // Helper functions
+void handle_list(int fd) {
+    shutdown(fd, SHUT_RD); // Only close early in LIST
+                    
+    // Create response buffer
+    char res_buf[1024];
+    memset(res_buf, 0, 1024);
+    memcpy(res_buf, "OK\n", 3);
+
+    size_t send_size = 0; // Used to determine message size
+    size_t bytes_copied = 3 + sizeof(size_t);
+
+    DIR * d = opendir(SERVER_DIR);
+    struct dirent * dir;
+    if (d) {
+        while ((dir = readdir(d))) {
+            if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0) {
+                continue; // Skip self and parent directories
+            }
+            
+            send_size += strlen(dir->d_name);
+            memcpy(res_buf + bytes_copied, dir->d_name, strlen(dir->d_name));
+            bytes_copied += strlen(dir->d_name);
+            res_buf[bytes_copied] = '\n';
+            send_size++;
+            bytes_copied++;
+        }
+        if (send_size > 0) {
+            // Get rid of trailing newline and adjust counters
+            res_buf[bytes_copied - 1] = '\0';
+            bytes_copied--;
+            send_size--;
+        }
+
+        closedir(d);
+    }
+
+    // Copy in message size to the result buffer
+    memcpy(res_buf + 3, (void *)&send_size, sizeof(size_t));
+
+    write_all(fd, res_buf, bytes_copied);
+}
+
+void handle_get(int fd) {
+    fd = 0;
+    return;
+}
+
+void handle_put(int fd) {
+    fd = 0;
+    return;
+}
+
+void handle_delete(int fd, char * read_buf) {
+    shutdown(fd, SHUT_RD);
+    strtok(read_buf, " "); // Split space and rid command
+    char * file_name = strtok(NULL, "\n"); // Get filepath of command
+
+    // Check to make sure that filepath exists
+
+    //      Create the full file path
+    size_t path_len = strlen(SERVER_DIR) + 1 + strlen(file_name) + 1;
+    char full_file_path[path_len];
+    memset(full_file_path, 0, path_len);
+    memcpy(full_file_path, SERVER_DIR, strlen(SERVER_DIR));
+    full_file_path[strlen(SERVER_DIR)] = '/';
+    memcpy(full_file_path + strlen(SERVER_DIR) + 1, file_name, strlen(file_name));
+
+    // Create response buffer
+    char res_buf[1024];
+    memset(res_buf, 0, 1024);
+    size_t data_size = 0;
+
+    struct stat file_info;
+    if (stat(full_file_path, &file_info) == -1) {
+        // File did not exist in the temporary directory, send bad response
+        char * err_string = "ERROR\nNo such file\n";
+        memcpy(res_buf, err_string, strlen(err_string));
+        data_size += (strlen(err_string) + 1);
+
+    } else {
+        remove(full_file_path);
+        memcpy(res_buf, "OK\n", 3);
+        data_size += 3;
+    }
+
+    // Send good response
+    write_all(fd, res_buf, data_size);
+}
+
 void shutdown_server() {
     if (SERVER_SOCKET != -1) {
         shutdown(SERVER_SOCKET, SHUT_RDWR);
@@ -249,7 +305,6 @@ void shutdown_server() {
     }
 
     // Remove all server files and delete temp directory
-    fprintf(stderr, "Deleting files and directory\n");
     delete_server_dir();
     free(SERVER_DIR);
 }
