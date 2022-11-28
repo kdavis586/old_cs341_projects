@@ -118,8 +118,8 @@ int main(int argc, char **argv) {
     }
 
     // Create temporary directory for files
-    SERVER_DIR = calloc(1, 9);
-    memcpy(SERVER_DIR, "./XXXXXX", 9);
+    SERVER_DIR = calloc(1, 7);
+    memcpy(SERVER_DIR, "XXXXXX", 9);
     if (!(SERVER_DIR = mkdtemp(SERVER_DIR))) {
         exit(1);
     }
@@ -362,10 +362,10 @@ void delete_server_dir() {
             memcpy(remove_path, SERVER_DIR, strlen(SERVER_DIR));
             remove_path[strlen(SERVER_DIR)] = '/';
             memcpy(remove_path + strlen(SERVER_DIR) + 1, dir->d_name, strlen(dir->d_name));
-            remove(remove_path);
+            unlink(remove_path);
         }
 
         closedir(d);
     }
-    remove(SERVER_DIR);
+    rmdir(SERVER_DIR);
 }
