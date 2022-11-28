@@ -189,7 +189,10 @@ int main(int argc, char **argv) {
                     // Handle Invalid
                     // Send bad response to client
                     // See: http://cs341.cs.illinois.edu/assignments/networking_mp#:~:text=filenames%20at%20all.-,Error%20handling,-Your%20server%20is
-                    exit(7);
+                    char * err_string = "ERROR\nBad request\n";
+                    write_all(fd, err_string, strlen(err_string) + 1);
+                    epoll_ctl(EPOLL_FD, EPOLL_CTL_DEL, fd, NULL);
+                    close(fd);
                 }
             }
         }
