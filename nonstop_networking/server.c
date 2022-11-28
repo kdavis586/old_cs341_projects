@@ -25,8 +25,8 @@ void shutdown_server();
 void handle_sigint();
 void delete_server_dir();
 void handle_list(int fd);
-void handle_get(int fd);
-void handle_put(int fd);
+void handle_get(int fd, char * read_buf);
+void handle_put(int fd, char * read_buf);
 void handle_delete(int fd, char * read_buf);
 
 // Globals
@@ -174,6 +174,7 @@ int main(int argc, char **argv) {
                     close(fd);
                 } else if (strncmp(read_buf, "GET", 3) == 0) {
                     // Handle GET request
+                    handle_get(fd, read_buf);
                     epoll_ctl(EPOLL_FD, EPOLL_CTL_DEL, fd, NULL);
                     close(fd);
                 } else if (strncmp(read_buf, "PUT", 3) == 0) {
@@ -246,13 +247,46 @@ void handle_list(int fd) {
     write_all(fd, res_buf, bytes_copied);
 }
 
-void handle_get(int fd) {
-    fd = 0;
+void handle_get(int fd, char * read_buf) {
+    shutdown(fd, SHUT_RD);
+    strtok(read_buf, " "); // Split space and rid command
+    char * file_name = strtok(NULL, "\n"); // Get filepath of command
+
+    // Check to make sure that filepath exists
+
+    //      Create the full file path
+    size_t path_len = strlen(SERVER_DIR) + 1 + strlen(file_name) + 1;
+    char full_file_path[path_len];
+    memset(full_file_path, 0, path_len);
+    memcpy(full_file_path, SERVER_DIR, strlen(SERVER_DIR));
+    full_file_path[strlen(SERVER_DIR)] = '/';
+    memcpy(full_file_path + strlen(SERVER_DIR) + 1, file_name, strlen(file_name));
+
+    // Create response buffer
+    char res_buf[1024];
+    memset(res_buf, 0, 1024);
+    size_t data_size = 0;
+
+    struct stat file_info;
+    if (stat(full_file_path, &file_info) == -1) {
+        // File did not exist in the temporary directory, send bad response
+        char * err_string = "ERROR\nNo such file\n";
+        memcpy(res_buf, err_string, strlen(err_string));
+        data_size += (strlen(err_string) + 1);
+    } else {
+        // Send good response
+        memcpy(res_buf, "OK\n", 3);
+        // TODO: Send file here
+        data_size += 3;
+    }
+
+    write_all(fd, res_buf, data_size);
     return;
 }
 
-void handle_put(int fd) {
+void handle_put(int fd, char * read_buf) {
     fd = 0;
+    read_buf = NULL;
     return;
 }
 
@@ -284,12 +318,12 @@ void handle_delete(int fd, char * read_buf) {
         data_size += (strlen(err_string) + 1);
 
     } else {
+        // Send good response
         remove(full_file_path);
         memcpy(res_buf, "OK\n", 3);
         data_size += 3;
     }
 
-    // Send good response
     write_all(fd, res_buf, data_size);
 }
 
