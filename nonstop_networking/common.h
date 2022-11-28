@@ -13,3 +13,7 @@
     } while (0);
 
 typedef enum { GET, PUT, DELETE, LIST, V_UNKNOWN } verb;
+
+int read_all(int fd, char * buffer, size_t size);
+
+int write_all(int fd, char * buffer, size_t size);

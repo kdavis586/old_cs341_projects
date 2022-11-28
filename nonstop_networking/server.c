@@ -13,18 +13,24 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <errno.h>
+#include <dirent.h>
+#include <sys/stat.h>
 
 #include "format.h"
+#include "common.h"
 
 // Forward declarations
 void shutdown_server();
 void handle_sigint();
+void delete_server_dir();
 
 // Globals
 static int SERVER_SOCKET = -1;
 static struct addrinfo * RESULT = NULL;
 static int EPOLL_FD = -1;
-static int MAX_CLIENTS = 2048; // HACK: Hopefully this is big enough...
+static int MAX_CLIENTS = 1024; // HACK: Hopefully this is big enough...
+static char * SERVER_DIR = NULL;
 
 // Main function
 // TODO: Check to make sure returning proper exit code for each scenario
@@ -106,17 +112,24 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
-    struct epoll_event events[MAX_CLIENTS];
+    // Create temporary directory for files
+    SERVER_DIR = calloc(1, 9);
+    memcpy(SERVER_DIR, "./XXXXXX", 9);
+    if (!(SERVER_DIR = mkdtemp(SERVER_DIR))) {
+        exit(1);
+    }
+    
     int max_events = 500; // HACK: Random value, might not work...
+    struct epoll_event events[max_events];
     int timeout_ms = 1000;
-    while (true) { // TODO: Fix the condition here
+
+    // Main server loop
+    while (true) {
         int nfds = epoll_wait(EPOLL_FD, events, max_events, timeout_ms);
         if (nfds == -1) {
             shutdown_server();
             exit(1);
         }
-
-        if (nfds == 0) continue;
 
         int i;
         for (i = 0; i < nfds; i++) {
@@ -126,6 +139,7 @@ int main(int argc, char **argv) {
             if (fd == SERVER_SOCKET) {
                 // Event was from the server socket, accept new connection
                 int connect_fd = accept(SERVER_SOCKET, NULL, NULL);
+                fprintf(stderr, "Accepted new connection with fd: %d\n", connect_fd);
                 if (connect_fd == -1) {
                     exit(1);
                 }
@@ -141,7 +155,75 @@ int main(int argc, char **argv) {
                 }
 
             } else {
+                // TODO: Figure out how to detect client disconnect
+
                 // Event was from a client
+                fprintf(stderr, "Event from client_fd: %d\n", fd);
+                char read_buf[1024];
+                memset(read_buf, 0, 1024);
+                if (read_all(fd, read_buf, 1024) == -1) {
+                    fprintf(stderr, "Read failed!\n");
+                }
+                fprintf(stderr, "Content: %s\n", read_buf);
+                shutdown(fd, SHUT_RD); // Only close early in LIST
+
+                // Check to see what command was given
+                if (strncmp(read_buf, "LIST", 4) == 0) {
+                    fprintf(stderr, "LIST request detected\n");
+                    // Handle LIST request
+                    char send_buf[1024];
+                    memset(send_buf, 0, 1024);
+                    memcpy(send_buf, "OK\n", 3);
+
+                    size_t send_size = 0;
+                    size_t bytes_copied = 3 + sizeof(size_t);
+                    fprintf(stderr, "Copying file names...\n");
+
+                    fprintf(stderr, "Reading file names from directory: %s\n", SERVER_DIR);
+                    DIR * d = opendir(SERVER_DIR);
+                    struct dirent * dir;
+                    if (d) {
+                        while ((dir = readdir(d))) {
+                            fprintf(stderr, "Found file: %s\n", dir->d_name);
+                            if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0) {
+                                continue; // Skip self and parent names
+                            }
+                            
+                            send_size += strlen(dir->d_name);
+                            memcpy(send_buf + bytes_copied, dir->d_name, strlen(dir->d_name));
+                            bytes_copied += strlen(dir->d_name);
+                            send_buf[bytes_copied] = '\n';
+                            send_size++;
+                            bytes_copied++;
+                        }
+                        if (send_size > 0) {
+                            send_buf[bytes_copied - 1] = '\0'; // Get rid of trailing newline
+                            bytes_copied--;
+                            send_size--;
+                        }
+
+                        closedir(d);
+                    }
+                    fprintf(stderr, "send size: %zu\n", send_size);
+                    memcpy(send_buf + 3, (void *)&send_size, sizeof(size_t));
+                    write(2, send_buf, 3);
+                    write(2, send_buf + 3 + sizeof(size_t), 255);
+
+                    write_all(fd, send_buf, bytes_copied);
+                    fprintf(stderr, "Completed LIST request\n");
+                    epoll_ctl(EPOLL_FD, EPOLL_CTL_DEL, fd, NULL);
+                    close(fd);
+                } else if (strncmp(read_buf, "GET", 3) == 0) {
+                    // Handle GET request
+                } else if (strncmp(read_buf, "PUT", 3) == 0) {
+                    // Handle PUT request
+                } else if (strncmp(read_buf, "DELETE", 6) == 0) {
+                    // Handle DELETE request
+                } else {
+                    // Handle Invalid
+                    // Shouldn't go here
+                    exit(7);
+                }
             }
         }
     }
@@ -165,9 +247,33 @@ void shutdown_server() {
         free(RESULT);
         RESULT = NULL;
     }
+
+    // Remove all server files and delete temp directory
+    fprintf(stderr, "Deleting files and directory\n");
+    delete_server_dir();
+    free(SERVER_DIR);
 }
 
 void handle_sigint() {
     shutdown_server();
     exit(0);
+}
+
+void delete_server_dir() {
+    DIR * d = opendir(SERVER_DIR);
+    struct dirent * dir;
+    if (d) {
+        while ((dir = readdir(d))) {
+            size_t path_size = strlen(SERVER_DIR) + 1 + strlen(dir->d_name) + 1;
+            char remove_path[path_size];
+            memset(remove_path, 0, path_size);
+            memcpy(remove_path, SERVER_DIR, strlen(SERVER_DIR));
+            remove_path[strlen(SERVER_DIR)] = '/';
+            memcpy(remove_path + strlen(SERVER_DIR) + 1, dir->d_name, strlen(dir->d_name));
+            remove(remove_path);
+        }
+
+        closedir(d);
+    }
+    remove(SERVER_DIR);
 }
