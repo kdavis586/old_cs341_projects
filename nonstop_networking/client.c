@@ -116,7 +116,6 @@ int main(int argc, char **argv) {
             // Get response size
             size_t data_size = 0;
             memcpy((char *)&data_size, read_buf + strlen(status) + 1, sizeof(size_t));
-            fprintf(stderr, "Read data size is %zu\n", data_size);
 
             // Adjust bytes read for only file content
             bytes_read -= (strlen(status) + 1 + sizeof(size_t));
@@ -158,7 +157,6 @@ int main(int argc, char **argv) {
             }
 
             // Get true response size
-            fprintf(stderr, "Recieved content size is %zu\n", recieved_size);
             if (recieved_size < data_size) {
                 print_too_little_data();
                 shutdown(socket_fd, SHUT_RDWR);
