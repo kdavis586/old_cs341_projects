@@ -1,4 +1,4 @@
-/**
+/**parse_args
  * nonstop_networking
  * CS 341 - Fall 2022
  */
@@ -86,13 +86,15 @@ int main(int argc, char **argv) {
                 exit(1);
             }
             shutdown(socket_fd, SHUT_WR);
+            free(write_buf);
 
             // Prepare read buffer
-            char read_buf[4096];
-            memset(read_buf, 0, 4096);
+            char read_buf[1024];
+            memset(read_buf, 0, 1024);
             
             // Read from server
-            if (read_all(socket_fd, read_buf, (size_t)4096) == -1) {
+            int bytes_read = -1;
+            if ((bytes_read = read_all(socket_fd, read_buf, (size_t)1024)) == -1) {
                 shutdown(socket_fd, SHUT_RDWR);
                 close(socket_fd);
                 print_connection_closed();
@@ -114,26 +116,13 @@ int main(int argc, char **argv) {
             // Get response size
             size_t data_size = 0;
             memcpy((char *)&data_size, read_buf + strlen(status) + 1, sizeof(size_t));
+            fprintf(stderr, "Read data size is %zu\n", data_size);
 
-            // Get true response size
-            size_t content_size = strlen(read_buf + strlen(status) + 1 + sizeof(size_t));
-            if (content_size < data_size) {
-                print_too_little_data();
-                shutdown(socket_fd, SHUT_RDWR);
-                close(socket_fd);
-                free(parsed_args);
-                freeaddrinfo(result);
-                exit(1);
-            } else if (content_size > data_size) {
-                print_received_too_much_data();
-                shutdown(socket_fd, SHUT_RDWR);
-                close(socket_fd);
-                free(parsed_args);
-                freeaddrinfo(result);
-                exit(1);
-            }
+            // Adjust bytes read for only file content
+            bytes_read -= (strlen(status) + 1 + sizeof(size_t));
+            size_t offset = (strlen(status) + 1 + sizeof(size_t));
 
-            // Write results from server local file name
+            // Read all file data and write results from server local file name
             int out_fd = open(local_file, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXU | S_IRWXG | S_IRWXO);
             if (out_fd == -1) {
                 // normally print error here
@@ -145,7 +134,21 @@ int main(int argc, char **argv) {
                 exit(1);
             }
             
-            if (write_all(out_fd, read_buf + strlen(status) + 1 + sizeof(size_t), content_size) == -1) {
+            size_t recieved_size = 0;
+            do {
+                if (write_all(out_fd, read_buf + offset, bytes_read) == -1) {
+                    shutdown(socket_fd, SHUT_RDWR);
+                    close(socket_fd);
+                    print_connection_closed();
+                    free(parsed_args);
+                    freeaddrinfo(result);
+                    exit(1);
+                }
+                recieved_size += bytes_read;
+                memset(read_buf, 0, 1024);
+                offset = 0;
+            } while ((bytes_read = read_all(socket_fd, read_buf, 1024)) != 0);
+            if (bytes_read == -1) {
                 shutdown(socket_fd, SHUT_RDWR);
                 close(socket_fd);
                 print_connection_closed();
@@ -154,7 +157,26 @@ int main(int argc, char **argv) {
                 exit(1);
             }
 
+            // Get true response size
+            fprintf(stderr, "Recieved content size is %zu\n", recieved_size);
+            if (recieved_size < data_size) {
+                print_too_little_data();
+                shutdown(socket_fd, SHUT_RDWR);
+                close(socket_fd);
+                free(parsed_args);
+                freeaddrinfo(result);
+                exit(1);
+            } else if (recieved_size > data_size) {
+                print_received_too_much_data();
+                shutdown(socket_fd, SHUT_RDWR);
+                close(socket_fd);
+                free(parsed_args);
+                freeaddrinfo(result);
+                exit(1);
+            }
+
             // Write response status and size to stdout
+            close(out_fd);
             fprintf(stdout, "%s\n%zu", status, data_size);
             break;
         }
@@ -215,11 +237,11 @@ int main(int argc, char **argv) {
             shutdown(socket_fd, SHUT_WR);
 
             // Prepare read buffer
-            char read_buf[4096];
-            memset(read_buf, 0, 4096);
+            char read_buf[1024];
+            memset(read_buf, 0, 1024);
             
             // Read from server
-            if (read_all(socket_fd, read_buf, (size_t)4096) == -1) {
+            if (read_all(socket_fd, read_buf, (size_t)1024) == -1) {
                 shutdown(socket_fd, SHUT_RDWR);
                 close(socket_fd);
                 print_connection_closed();
@@ -260,11 +282,11 @@ int main(int argc, char **argv) {
             shutdown(socket_fd, SHUT_WR);
 
             // Prepare read buffer
-            char read_buf[4096];
-            memset(read_buf, 0, 4096);
+            char read_buf[1024];
+            memset(read_buf, 0, 1024);
             
             // Read from server
-            if (read_all(socket_fd, read_buf, (size_t)4096) == -1) {
+            if (read_all(socket_fd, read_buf, (size_t)1024) == -1) {
                 shutdown(socket_fd, SHUT_RDWR);
                 close(socket_fd);
                 print_connection_closed();
@@ -327,11 +349,11 @@ int main(int argc, char **argv) {
             shutdown(socket_fd, SHUT_WR);
 
             // Prepare read buffer
-            char read_buf[4096];
-            memset(read_buf, 0, 4096);
+            char read_buf[1024];
+            memset(read_buf, 0, 1024);
             
             // Read from server
-            if (read_all(socket_fd, read_buf, (size_t)4096) == -1) {
+            if (read_all(socket_fd, read_buf, (size_t)1024) == -1) {
                 shutdown(socket_fd, SHUT_RDWR);
                 close(socket_fd);
                 print_connection_closed();
@@ -454,7 +476,7 @@ verb check_args(char **args) {
 }
 
 int status_err(char * status) {
-    if (strcmp(status, "ERROR") == 0) {
+    if (strncmp(status, "ERROR", 5) == 0) {
         return 1;
     }
 

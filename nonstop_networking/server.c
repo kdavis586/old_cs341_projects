@@ -51,6 +51,7 @@ int main(int argc, char **argv) {
     memset(&handler, 0, sizeof(struct sigaction));
     handler.sa_handler = handle_sigint;
 
+    signal(SIGPIPE, SIG_IGN);
     if (sigaction(SIGINT, &handler, NULL) == -1) {
         exit(1);
     }
@@ -265,22 +266,50 @@ void handle_get(int fd, char * read_buf) {
     // Create response buffer
     char res_buf[1024];
     memset(res_buf, 0, 1024);
-    size_t data_size = 0;
 
     struct stat file_info;
     if (stat(full_file_path, &file_info) == -1) {
         // File did not exist in the temporary directory, send bad response
         char * err_string = "ERROR\nNo such file\n";
         memcpy(res_buf, err_string, strlen(err_string));
-        data_size += (strlen(err_string) + 1);
+        write_all(fd, res_buf, strlen(err_string) + 1);
     } else {
         // Send good response
         memcpy(res_buf, "OK\n", 3);
-        // TODO: Send file here
-        data_size += 3;
+        size_t bytes_to_send = file_info.st_size;
+        fprintf(stderr, "bytes_to_send: %zu\n", bytes_to_send);
+        memcpy(res_buf + 3, (void *)&bytes_to_send, sizeof(size_t));
+        
+        // Send response info
+        write_all(fd, res_buf, 3 + sizeof(size_t)); 
+
+        // Send file data
+        int send_fd = open(full_file_path, O_RDONLY);
+        if (send_fd == -1) {
+            exit(1);
+        }
+        memset(res_buf, 0, 1024);
+        size_t bytes_written = 0;
+        while (bytes_written < bytes_to_send) {
+            size_t write_size = 1024;
+            if (bytes_to_send - bytes_written < 1024) {
+                write_size = bytes_to_send - bytes_written;
+            }
+            if (read_all(send_fd, res_buf, write_size) == -1) {
+                fprintf(stderr, "Read failed!\n");
+                exit(1);
+            }
+            int bytes_wrote = write_all(fd, res_buf, write_size);
+            if (bytes_wrote == -1) {
+                fprintf(stderr, "Write failed!\n");
+                exit(1);
+            }
+            bytes_written += (size_t)bytes_wrote;
+            memset(res_buf, 0, 1024);
+        }
+        fprintf(stderr, "Done sending %zu bytes to client\n", bytes_written);
     }
 
-    write_all(fd, res_buf, data_size);
     return;
 }
 
@@ -319,7 +348,7 @@ void handle_delete(int fd, char * read_buf) {
 
     } else {
         // Send good response
-        remove(full_file_path);
+        unlink(full_file_path);
         memcpy(res_buf, "OK\n", 3);
         data_size += 3;
     }

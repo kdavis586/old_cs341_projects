@@ -12,7 +12,7 @@ int write_all(int fd, char * buffer, size_t size) {
     while (bytes_wrote != size) {
         ssize_t cur_written = write(fd, buffer + bytes_wrote, size - bytes_wrote);
         if (cur_written == 0) {
-            return 0;
+            break;
         } else if (cur_written > 0) {
             bytes_wrote += (size_t)cur_written;
         } else if (cur_written == -1 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)) {
@@ -23,7 +23,7 @@ int write_all(int fd, char * buffer, size_t size) {
         }
     }
 
-    return 0;
+    return bytes_wrote;
 }
 
 // Read all bytes from the file descriptor, 0 success, -1 fail
@@ -32,7 +32,7 @@ int read_all(int fd, char * buffer, size_t size) {
     while (bytes_read < size) {
         ssize_t cur_read = read(fd, buffer + bytes_read, size - bytes_read);
         if (cur_read == 0) {
-            return 0;
+            break;
         } else if (cur_read > 0) {
             bytes_read += (size_t)cur_read;
         } else if (cur_read == -1 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)) {
@@ -42,5 +42,5 @@ int read_all(int fd, char * buffer, size_t size) {
         }
     }
 
-    return 0;
+    return bytes_read;
 }
