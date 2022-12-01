@@ -26,7 +26,7 @@ void handle_sigint();
 void delete_server_dir();
 void handle_list(int fd);
 void handle_get(int fd, char * read_buf);
-void handle_put(int fd, char * read_buf);
+void handle_put(int fd, char * read_buf, size_t initial_bytes_read);
 void handle_delete(int fd, char * read_buf);
 
 // Globals
@@ -164,7 +164,8 @@ int main(int argc, char **argv) {
                 char read_buf[1024];
                 memset(read_buf, 0, 1024);
 
-                if (read_all(fd, read_buf, 1024) == -1) {
+                size_t bytes_read = 0;
+                if ((bytes_read = read_all(fd, read_buf, 1024)) == -1) {
                     exit(1);
                 }
 
@@ -180,6 +181,7 @@ int main(int argc, char **argv) {
                     close(fd);
                 } else if (strncmp(read_buf, "PUT", 3) == 0) {
                     // Handle PUT request
+                    handle_put(fd, read_buf, bytes_read); // TODO: What if need to continue?
                     epoll_ctl(EPOLL_FD, EPOLL_CTL_DEL, fd, NULL);
                     close(fd);
                 } else if (strncmp(read_buf, "DELETE", 6) == 0) {
@@ -309,9 +311,103 @@ void handle_get(int fd, char * read_buf) {
     return;
 }
 
-void handle_put(int fd, char * read_buf) {
-    fd = 0;
-    read_buf = NULL;
+void handle_put(int fd, char * read_buf, size_t initial_bytes_read) {
+    //
+    size_t i = 0;
+    while (read_buf[i] != '\n') {
+        i++;
+    }
+    size_t client_path_size = i - 4;
+    char client_path[client_path_size + 1];
+    memset(client_path, 0, client_path_size + 1);
+    memcpy(client_path, read_buf + 4, client_path_size);
+
+    // Create file to upload client data to
+
+    //      Create the full file path
+    size_t path_len = strlen(SERVER_DIR) + 1 + strlen(client_path) + 1;
+    char full_file_path[path_len];
+    memset(full_file_path, 0, path_len);
+    memcpy(full_file_path, SERVER_DIR, strlen(SERVER_DIR));
+    full_file_path[strlen(SERVER_DIR)] = '/';
+    memcpy(full_file_path + strlen(SERVER_DIR) + 1, client_path, strlen(client_path));
+
+    //      Create the file in the server dir
+    int file_fd = open(full_file_path, O_CREAT | O_TRUNC | O_WRONLY, S_IRWXU | S_IRWXG | S_IRWXO);
+    if (file_fd == -1) {
+        exit(1);
+    }
+    
+    // Get the intended size of the client file
+    size_t intended_size = 0;
+    memcpy((void*)&intended_size, read_buf + 4 + client_path_size + 1, sizeof(size_t));
+
+   //char * data_start = read_buf + 4 + client_path_size - 1 + 1 + sizeof(size_t);
+    size_t bytes_to_write = initial_bytes_read - (4 + client_path_size + 1 + sizeof(size_t));
+    size_t offset = 4 + client_path_size + 1 + sizeof(size_t);
+    int bytes_wrote = 0;
+    do {
+        bytes_wrote += write_all(file_fd, read_buf + offset, bytes_to_write);
+        offset = 0;
+        bytes_to_write = read_all(fd, read_buf, 1024);
+    } while (bytes_to_write != 0);
+
+    shutdown(fd, SHUT_RD);
+
+    // Create response buffer
+    char res_buf[1024];
+    memset(res_buf, 0, 1024);
+
+    if ((size_t)bytes_wrote == intended_size) {
+        // Good response
+        memcpy(res_buf, "OK\n", 3);
+        
+        // Send response info
+        write_all(fd, res_buf, 3); 
+    } else {
+        // Handle too much / too little data
+        // Delete local file
+        unlink(full_file_path);
+        char * err_string = "ERROR\nBad file size\n";
+        memcpy(res_buf, err_string, strlen(err_string));
+
+        // Send response info
+        write_all(fd, res_buf, strlen(err_string) + 1);
+    }
+
+    // struct stat file_info;
+    // if (stat(full_file_path, &file_info) == -1) {
+    //     // File did not exist in the temporary directory, send bad response
+    //     char * err_string = "ERROR\nNo such file\n";
+    //     memcpy(res_buf, err_string, strlen(err_string));
+    //     write_all(fd, res_buf, strlen(err_string) + 1);
+    // } else {
+    //     // Send good response
+        
+
+    //     // Send file data
+    //     int send_fd = open(full_file_path, O_RDONLY);
+    //     if (send_fd == -1) {
+    //         exit(1);
+    //     }
+    //     memset(res_buf, 0, 1024);
+    //     size_t bytes_written = 0;
+    //     while (bytes_written < bytes_to_send) {
+    //         size_t write_size = 1024;
+    //         if (bytes_to_send - bytes_written < 1024) {
+    //             write_size = bytes_to_send - bytes_written;
+    //         }
+    //         if (read_all(send_fd, res_buf, write_size) == -1) {
+    //             exit(1);
+    //         }
+    //         int bytes_wrote = write_all(fd, res_buf, write_size);
+    //         if (bytes_wrote == -1) {
+    //             exit(1);
+    //         }
+    //         bytes_written += (size_t)bytes_wrote;
+    //         memset(res_buf, 0, 1024);
+    //     }
+    // }
     return;
 }
 
