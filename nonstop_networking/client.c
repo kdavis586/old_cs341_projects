@@ -251,16 +251,6 @@ int main(int argc, char **argv) {
                 exit(1);
             }
 
-            // // Get response status
-            // char status[256];
-            // memset(status, 0, 256);
-            // sscanf(read_buf, "%s\n", status);
-
-            // if (status_err(status)) {
-            //     fprintf(stdout, "%s", read_buf);
-            //     break;
-            // }
-
             // Put response will only respond with with either OK\n or ERROR\n<Error info>\n ... just print it
             fprintf(stdout, "%s", read_buf);
             break;
