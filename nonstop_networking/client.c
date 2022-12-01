@@ -232,8 +232,8 @@ int main(int argc, char **argv) {
                     freeaddrinfo(result);
                     exit(1);
                 }
-                free(line_buf);
             }
+            free(line_buf);
             fclose(local_f_ptr);
             shutdown(socket_fd, SHUT_WR);
 
