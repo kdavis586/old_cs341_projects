@@ -19,6 +19,7 @@
 
 #include "format.h"
 #include "common.h"
+#include "includes/vector.h"
 
 // Forward declarations
 void shutdown_server();
@@ -35,6 +36,7 @@ static struct addrinfo * RESULT = NULL;
 static int EPOLL_FD = -1;
 static int MAX_CLIENTS = 1024; // HACK: Hopefully this is big enough...
 static char * SERVER_DIR = NULL;
+static vector * SERVER_FILES = NULL;
 
 // Main function
 // TODO: Check to make sure returning proper exit code for each scenario
@@ -125,6 +127,9 @@ int main(int argc, char **argv) {
         exit(1);
     }
     print_temp_directory(SERVER_DIR);
+
+    // Create vector that stores the names of all files on the server
+    SERVER_FILES = string_vector_create();
     
     int max_events = 500; // HACK: Random value, might not work...
     struct epoll_event events[max_events];
@@ -270,7 +275,18 @@ void handle_get(int fd, char * read_buf) {
     memset(res_buf, 0, 1024);
 
     struct stat file_info;
-    if (stat(full_file_path, &file_info) == -1) {
+    bool in_file_list = false;
+    size_t i;
+
+    // Check to see if the file names in the server file list
+    for (i = 0; i < vector_size(SERVER_FILES); i++) {
+        char * fname = vector_get(SERVER_FILES, i);
+        if (strcmp(fname, file_name) == 0) {
+            in_file_list = true;
+            break;
+        }
+    }
+    if (stat(full_file_path, &file_info) == -1 || !in_file_list) {
         // File did not exist in the temporary directory, send bad response
         char * err_string = "ERROR\nNo such file\n";
         memcpy(res_buf, err_string, strlen(err_string));
@@ -360,6 +376,7 @@ void handle_put(int fd, char * read_buf, size_t initial_bytes_read) {
 
     if ((size_t)bytes_wrote == intended_size) {
         // Good response
+        vector_push_back(SERVER_FILES, client_path);
         memcpy(res_buf, "OK\n", 3);
         
         // Send response info
@@ -432,7 +449,18 @@ void handle_delete(int fd, char * read_buf) {
     size_t data_size = 0;
 
     struct stat file_info;
-    if (stat(full_file_path, &file_info) == -1) {
+    bool in_file_list = false;
+    size_t i;
+
+    // Check to see if the file names in the server file list
+    for (i = 0; i < vector_size(SERVER_FILES); i++) {
+        char * fname = vector_get(SERVER_FILES, i);
+        if (strcmp(fname, file_name) == 0) {
+            in_file_list = true;
+            break;
+        }
+    }
+    if (stat(full_file_path, &file_info) == -1 || !in_file_list) {
         // File did not exist in the temporary directory, send bad response
         char * err_string = "ERROR\nNo such file\n";
         memcpy(res_buf, err_string, strlen(err_string));
@@ -465,6 +493,8 @@ void shutdown_server() {
     // Remove all server files and delete temp directory
     delete_server_dir();
     free(SERVER_DIR);
+
+    vector_destroy(SERVER_FILES);
 }
 
 void handle_sigint() {
@@ -474,15 +504,16 @@ void handle_sigint() {
 
 void delete_server_dir() {
     DIR * d = opendir(SERVER_DIR);
-    struct dirent * dir;
     if (d) {
-        while ((dir = readdir(d))) {
-            size_t path_size = strlen(SERVER_DIR) + 1 + strlen(dir->d_name) + 1;
+        size_t i;
+        for (i = 0; i < vector_size(SERVER_FILES); i++) {
+            char * file_name = vector_get(SERVER_FILES, i);
+            size_t path_size = strlen(SERVER_DIR) + 1 + strlen(file_name) + 1;
             char remove_path[path_size];
             memset(remove_path, 0, path_size);
             memcpy(remove_path, SERVER_DIR, strlen(SERVER_DIR));
             remove_path[strlen(SERVER_DIR)] = '/';
-            memcpy(remove_path + strlen(SERVER_DIR) + 1, dir->d_name, strlen(dir->d_name));
+            memcpy(remove_path + strlen(SERVER_DIR) + 1, file_name, strlen(file_name));
             unlink(remove_path);
         }
 
