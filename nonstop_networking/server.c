@@ -177,32 +177,24 @@ int main(int argc, char **argv) {
                 // Check to see what command was given
                 if (strncmp(read_buf, "LIST", 4) == 0) {
                     handle_list(fd);
-                    epoll_ctl(EPOLL_FD, EPOLL_CTL_DEL, fd, NULL);
-                    close(fd);
                 } else if (strncmp(read_buf, "GET", 3) == 0) {
                     // Handle GET request
                     handle_get(fd, read_buf);
-                    epoll_ctl(EPOLL_FD, EPOLL_CTL_DEL, fd, NULL);
-                    close(fd);
                 } else if (strncmp(read_buf, "PUT", 3) == 0) {
                     // Handle PUT request
                     handle_put(fd, read_buf, bytes_read); // TODO: What if need to continue?
-                    epoll_ctl(EPOLL_FD, EPOLL_CTL_DEL, fd, NULL);
-                    close(fd);
                 } else if (strncmp(read_buf, "DELETE", 6) == 0) {
                     // Handle DELETE request
                     handle_delete(fd, read_buf);
-                    epoll_ctl(EPOLL_FD, EPOLL_CTL_DEL, fd, NULL);
-                    close(fd);
                 } else {
                     // Handle Invalid
                     // Send bad response to client
                     // See: http://cs341.cs.illinois.edu/assignments/networking_mp#:~:text=filenames%20at%20all.-,Error%20handling,-Your%20server%20is
                     char * err_string = "ERROR\nBad request\n";
                     write_all(fd, err_string, strlen(err_string) + 1);
-                    epoll_ctl(EPOLL_FD, EPOLL_CTL_DEL, fd, NULL);
-                    close(fd);
                 }
+                epoll_ctl(EPOLL_FD, EPOLL_CTL_DEL, fd, NULL);
+                close(fd);
             }
         }
     }
@@ -225,16 +217,13 @@ void handle_list(int fd) {
     size_t bytes_copied = 3 + sizeof(size_t);
 
     DIR * d = opendir(SERVER_DIR);
-    struct dirent * dir;
     if (d) {
-        while ((dir = readdir(d))) {
-            if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0) {
-                continue; // Skip self and parent directories
-            }
-            
-            send_size += strlen(dir->d_name);
-            memcpy(res_buf + bytes_copied, dir->d_name, strlen(dir->d_name));
-            bytes_copied += strlen(dir->d_name);
+        size_t i;
+        for (i = 0; i < vector_size(SERVER_FILES); i++) {
+            char * file_name = vector_get(SERVER_FILES, i);
+            send_size += strlen(file_name);
+            memcpy(res_buf + bytes_copied, file_name, strlen(file_name));
+            bytes_copied += strlen(file_name);
             res_buf[bytes_copied] = '\n';
             send_size++;
             bytes_copied++;
@@ -348,6 +337,12 @@ void handle_put(int fd, char * read_buf, size_t initial_bytes_read) {
     full_file_path[strlen(SERVER_DIR)] = '/';
     memcpy(full_file_path + strlen(SERVER_DIR) + 1, client_path, strlen(client_path));
 
+    //      Check to see if we are overwriting
+    bool overwrite = false;
+    struct stat file_info;
+    if (stat(full_file_path, &file_info) != -1) {
+        overwrite = true;
+    }
     //      Create the file in the server dir
     int file_fd = open(full_file_path, O_CREAT | O_TRUNC | O_WRONLY, S_IRWXU | S_IRWXG | S_IRWXO);
     if (file_fd == -1) {
@@ -376,7 +371,9 @@ void handle_put(int fd, char * read_buf, size_t initial_bytes_read) {
 
     if ((size_t)bytes_wrote == intended_size) {
         // Good response
-        vector_push_back(SERVER_FILES, client_path);
+        if (!overwrite) {
+            vector_push_back(SERVER_FILES, client_path);
+        }
         memcpy(res_buf, "OK\n", 3);
         
         // Send response info
@@ -435,6 +432,15 @@ void handle_delete(int fd, char * read_buf) {
 
     } else {
         // Send good response
+        // TODO: remove file name from the vector
+        size_t i;
+        for (i = 0; i < vector_size(SERVER_FILES); i++) {
+            char * fname = vector_get(SERVER_FILES, i);
+            if (strcmp(fname, file_name) == 0) {
+                vector_erase(SERVER_FILES, i);
+                break;
+            }
+        }
         unlink(full_file_path);
         memcpy(res_buf, "OK\n", 3);
         data_size += 3;
