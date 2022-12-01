@@ -392,39 +392,6 @@ void handle_put(int fd, char * read_buf, size_t initial_bytes_read) {
         write_all(fd, res_buf, strlen(err_string) + 1);
     }
 
-    // struct stat file_info;
-    // if (stat(full_file_path, &file_info) == -1) {
-    //     // File did not exist in the temporary directory, send bad response
-    //     char * err_string = "ERROR\nNo such file\n";
-    //     memcpy(res_buf, err_string, strlen(err_string));
-    //     write_all(fd, res_buf, strlen(err_string) + 1);
-    // } else {
-    //     // Send good response
-        
-
-    //     // Send file data
-    //     int send_fd = open(full_file_path, O_RDONLY);
-    //     if (send_fd == -1) {
-    //         exit(1);
-    //     }
-    //     memset(res_buf, 0, 1024);
-    //     size_t bytes_written = 0;
-    //     while (bytes_written < bytes_to_send) {
-    //         size_t write_size = 1024;
-    //         if (bytes_to_send - bytes_written < 1024) {
-    //             write_size = bytes_to_send - bytes_written;
-    //         }
-    //         if (read_all(send_fd, res_buf, write_size) == -1) {
-    //             exit(1);
-    //         }
-    //         int bytes_wrote = write_all(fd, res_buf, write_size);
-    //         if (bytes_wrote == -1) {
-    //             exit(1);
-    //         }
-    //         bytes_written += (size_t)bytes_wrote;
-    //         memset(res_buf, 0, 1024);
-    //     }
-    // }
     return;
 }
 
