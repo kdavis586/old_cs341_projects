@@ -29,6 +29,7 @@ void handle_list(int fd);
 void handle_get(int fd, char * read_buf);
 void handle_put(int fd, char * read_buf, size_t initial_bytes_read);
 void handle_delete(int fd, char * read_buf);
+vector * get_header_args(char * buf);
 
 // Globals
 static int SERVER_SOCKET = -1;
@@ -50,13 +51,16 @@ int main(int argc, char **argv) {
 
     // Set up signal handling
     struct sigaction handler;
-    memset(&handler, 0, sizeof(struct sigaction));
+    //memset(&handler, 0, sizeof(struct sigaction)); // TODO: Maybe change this back
+    sigemptyset(&handler.sa_mask);
+    handler.sa_flags = 0;
     handler.sa_handler = handle_sigint;
-
-    signal(SIGPIPE, SIG_IGN);
+    sigaddset(&handler.sa_mask, SIGINT);
     if (sigaction(SIGINT, &handler, NULL) == -1) {
         exit(1);
     }
+
+    signal(SIGPIPE, SIG_IGN); // Ignore SIGPIPE
 
     char * port = argv[1];
 
@@ -173,28 +177,40 @@ int main(int argc, char **argv) {
                 if ((bytes_read = read_all(fd, read_buf, 1024)) == -1) {
                     exit(1);
                 }
+                
+                char copy_buf[1024];
+                memcpy(copy_buf, read_buf, 1024);
+                size_t i = 0;
+                while (copy_buf[i] != '\n' && i < 1024) {
+                    i++;
+                }
+                char * arg_str = calloc(1, i + 1);
+                memcpy(arg_str, copy_buf, i);
+                vector * args_list = get_header_args(arg_str);
 
                 // Check to see what command was given
-                if (strncmp(read_buf, "LIST", 4) == 0) {
+                if (strcmp(vector_get(args_list, 0), "LIST") == 0 && vector_size(args_list) == 1 && i < 1024) {
                     handle_list(fd);
-                } else if (strncmp(read_buf, "GET", 3) == 0) {
+                } else if (strcmp(vector_get(args_list, 0), "GET") == 0 && vector_size(args_list) == 2 && i < 1024) {
                     // Handle GET request
                     handle_get(fd, read_buf);
-                } else if (strncmp(read_buf, "PUT", 3) == 0) {
+                } else if (strcmp(vector_get(args_list, 0), "PUT") == 0 && vector_size(args_list) == 2 && i < 1024) {
                     // Handle PUT request
                     handle_put(fd, read_buf, bytes_read); // TODO: What if need to continue?
-                } else if (strncmp(read_buf, "DELETE", 6) == 0) {
+                } else if (strcmp(vector_get(args_list, 0), "DELETE") == 0 && vector_size(args_list) == 2 && i < 1024) {
                     // Handle DELETE request
                     handle_delete(fd, read_buf);
                 } else {
                     // Handle Invalid
                     // Send bad response to client
-                    // See: http://cs341.cs.illinois.edu/assignments/networking_mp#:~:text=filenames%20at%20all.-,Error%20handling,-Your%20server%20is
+                    print_invalid_response(); // TODO: Maybe remove
                     char * err_string = "ERROR\nBad request\n";
                     write_all(fd, err_string, strlen(err_string) + 1);
                 }
                 epoll_ctl(EPOLL_FD, EPOLL_CTL_DEL, fd, NULL);
                 close(fd);
+                free(arg_str);
+                vector_destroy(args_list);
             }
         }
     }
@@ -432,7 +448,6 @@ void handle_delete(int fd, char * read_buf) {
 
     } else {
         // Send good response
-        // TODO: remove file name from the vector
         size_t i;
         for (i = 0; i < vector_size(SERVER_FILES); i++) {
             char * fname = vector_get(SERVER_FILES, i);
@@ -493,4 +508,17 @@ void delete_server_dir() {
         closedir(d);
     }
     rmdir(SERVER_DIR);
+}
+
+vector * get_header_args(char * buf) {
+    vector * args = string_vector_create();
+
+    char * arg = NULL;
+    char * marker = buf;
+    while ((arg = strtok(marker, " "))) {
+        vector_push_back(args, arg);
+        marker = NULL;
+    }
+
+    return args;
 }

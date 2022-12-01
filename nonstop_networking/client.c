@@ -69,7 +69,7 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
-
+    // TODO: maybe add print_invalid_response()
     switch (method) {
         case GET: {
             // Prepare request
