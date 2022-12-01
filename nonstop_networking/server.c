@@ -120,7 +120,7 @@ int main(int argc, char **argv) {
 
     // Create temporary directory for files
     SERVER_DIR = calloc(1, 7);
-    memcpy(SERVER_DIR, "XXXXXX", 9);
+    memcpy(SERVER_DIR, "XXXXXX", 6);
     if (!(SERVER_DIR = mkdtemp(SERVER_DIR))) {
         exit(1);
     }

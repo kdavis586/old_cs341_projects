@@ -224,6 +224,7 @@ int main(int argc, char **argv) {
             ssize_t bytes_got;
             while((bytes_got = getline(&line_buf, &len, local_f_ptr)) != -1) {
                 if (write_all(socket_fd, line_buf, bytes_got) == -1) {
+                    free(line_buf);
                     shutdown(socket_fd, SHUT_RDWR);
                     close(socket_fd);
                     print_connection_closed();
@@ -231,7 +232,9 @@ int main(int argc, char **argv) {
                     freeaddrinfo(result);
                     exit(1);
                 }
+                free(line_buf);
             }
+            fclose(local_f_ptr);
             shutdown(socket_fd, SHUT_WR);
 
             // Prepare read buffer
